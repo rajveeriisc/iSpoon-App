@@ -15,38 +15,38 @@ class LiveMealCard extends StatelessWidget {
     final primary = Theme.of(context).colorScheme.primary;
     if (!data.ready) {
       return data.error != null
-          ? ('Mealsense unavailable', data.error!, kShakeRed)
-          : ('Starting Mealsense…', 'Loading the eating model.', Colors.grey);
+          ? ('Mealsense isn\'t ready', data.error!, kShakeRed)
+          : ('Starting up…', 'Getting your spoon ready.', Colors.grey);
     }
     switch (data.phase) {
       case MealPhase.eating:
         return (
           'Eating now',
-          'Bites are added automatically, about 2 s after each one.',
+          'Every spoonful is counted as you eat.',
           kSteadyGreen
         );
       case MealPhase.paused:
         return (
           'Paused',
-          'No bites for a minute. The meal ends by itself after 3 minutes.',
+          'Still here when you are. The meal closes itself if you\'re done.',
           kShakeAmber
         );
       case MealPhase.finished:
         return (
           'Meal finished',
-          'Here is how it went. A new meal starts on its own.',
+          'How that one went. Your next meal starts on its own.',
           primary
         );
       case MealPhase.idle:
         return data.streaming
             ? (
                 'Ready — start eating',
-                'Your first two spoonfuls start the meal automatically.',
+                'Just start eating — we\'ll take it from there.',
                 primary
               )
             : (
                 'Waiting for your spoon',
-                'Turn the spoon on and connect it. Mealsense listens in the background.',
+                'Switch your spoon on and we\'ll start tracking.',
                 Colors.grey
               );
     }

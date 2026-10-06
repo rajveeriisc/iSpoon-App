@@ -37,8 +37,8 @@ void main() {
     // grading the signal it never checked.
     expect(find.text('Measured over 46s of movement'), findsOneWidget);
     expect(
-      find.text('Measured by Mealsense over 46 s: '
-          'index 0.42 / 3, rhythm 5.1 Hz'),
+      find.text('From 46 seconds of movement, with a '
+          'repeated shake about 5.1 times a second'),
       findsOneWidget,
     );
   });
@@ -76,7 +76,7 @@ void main() {
       ),
     );
 
-    expect(find.text('Collecting a steady sample'), findsOneWidget);
+    expect(find.text('Getting a reading'), findsOneWidget);
     expect(find.text('NO REPEATED RHYTHM'), findsNothing);
   });
 }

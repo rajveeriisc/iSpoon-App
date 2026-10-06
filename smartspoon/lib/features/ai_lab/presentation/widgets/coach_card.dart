@@ -13,14 +13,14 @@ class CoachCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return AiLabCard(
-      title: 'AI coach',
+      title: 'Your coach',
       icon: Icons.auto_awesome_rounded,
       child: tips.isEmpty
           ? Text(
               inMeal
-                  ? 'Tips appear after a few bites.'
-                  : 'Eat a meal with your spoon and your coach will comment on '
-                      'your pace, rhythm and steadiness.',
+                  ? 'A few more bites and there will be something to say.'
+                  : 'Eat a meal with your spoon to see how your pace and '
+                      'steadiness are doing.',
               style: theme.textTheme.bodySmall
                   ?.copyWith(color: mutedText(context), height: 1.4),
             )

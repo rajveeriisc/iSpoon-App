@@ -30,7 +30,7 @@ class SteadinessCard extends StatelessWidget {
       return AiLabCard(
         title: 'Hand steadiness',
         icon: Icons.back_hand_outlined,
-        child: Text('Shows after you have eaten for a little while.',
+        child: Text('Appears once you\'ve been eating for a minute or two.',
             style: theme.textTheme.bodySmall?.copyWith(color: mutedText(context))),
       );
     }
@@ -68,7 +68,7 @@ class SteadinessCard extends StatelessWidget {
         _RangeBar(value: pct, normalMin: normalMin),
         const SizedBox(height: 8),
         Text(
-          'Share of the meal without rhythmic shaking. Normal eaters: '
+          'How much of the meal your hand held steady. Most people sit at '
           '${normalMin.round()}–100%.',
           style: muted,
         ),
@@ -86,7 +86,7 @@ class SteadinessCard extends StatelessWidget {
           style: muted,
         ),
         const SizedBox(height: 6),
-        Text('A steadiness measure, not a diagnosis.',
+        Text('This follows steadiness over time. It isn\'t a medical assessment.',
             style: theme.textTheme.bodySmall?.copyWith(
                 fontSize: 11, fontStyle: FontStyle.italic, color: mutedText(context))),
       ]),

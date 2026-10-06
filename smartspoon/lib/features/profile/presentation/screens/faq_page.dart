@@ -70,14 +70,14 @@ const List<_FaqEntry> _allFaqs = [
     icon: Icons.restaurant_rounded,
     question: 'How does bite detection work?',
     answer:
-        'The spoon uses a built-in IMU (accelerometer + gyroscope) running at 100 Hz. A state machine on the device detects the lift → approach → dwell → return motion pattern of each bite and counts it. The count syncs to your phone over BLE in real time.',
+        'Motion sensors in the handle follow the spoon 100 times a second. The spoon recognises the shape of a bite — lifting from the plate, pausing at your mouth, and coming back down — and counts it there and then, sending the total to your phone as you eat.',
   ),
   _FaqEntry(
     category: 'Eating',
     icon: Icons.speed_rounded,
     question: 'How is eating speed calculated?',
     answer:
-        'Speed is measured in bites per minute (bpm). The app uses a 3-minute rolling window of bite timestamps and applies exponential smoothing to give a stable, real-time reading. A typical eating pace is 10–20 bpm.',
+        'Your pace is how many bites you take per minute, averaged over the last few minutes so it does not jump about. Most people eat at somewhere between 10 and 20 bites a minute.',
   ),
   _FaqEntry(
     category: 'Eating',
@@ -107,7 +107,7 @@ const List<_FaqEntry> _allFaqs = [
     icon: Icons.cloud_sync_rounded,
     question: 'When does my data sync to the cloud?',
     answer:
-        'Data syncs automatically every 5 minutes when you have an internet connection, and also every time you open the app. All data is stored locally on your device first so nothing is lost if you\'re offline.',
+        'Everything is saved on your phone first, so nothing is lost when you are offline. It uploads on its own in the background — after a meal, and again overnight. All data is stored locally on your device first so nothing is lost if you\'re offline.',
   ),
   _FaqEntry(
     category: 'Data',

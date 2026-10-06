@@ -90,7 +90,7 @@ class _Header extends StatelessWidget {
               style: theme.textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.w800, color: theme.colorScheme.primary)),
           Text(
-            data.spoonName == null ? 'Your eating coach' : 'Your eating coach · ${data.spoonName}',
+            data.spoonName == null ? 'Mealtime tracking' : 'Mealtime tracking · ${data.spoonName}',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.bodySmall?.copyWith(color: mutedText(context)),

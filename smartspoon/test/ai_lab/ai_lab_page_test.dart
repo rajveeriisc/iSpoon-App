@@ -106,7 +106,7 @@ void main() {
         ));
         await tester.pump(const Duration(milliseconds: 300));
         expect(tester.takeException(), isNull);
-        expect(find.text('AI coach'), findsOneWidget);
+        expect(find.text('Your coach'), findsOneWidget);
         expect(find.text('Hand steadiness'), findsOneWidget);
         switch (entry.key) {
           case 'waiting':
@@ -122,8 +122,8 @@ void main() {
         }
 
         // The collapsed "Model & data" section opens without overflow too.
-        await tester.ensureVisible(find.text('Model & data'));
-        await tester.tap(find.text('Model & data'));
+        await tester.ensureVisible(find.text('Settings & how it works'));
+        await tester.tap(find.text('Settings & how it works'));
         await tester.pump(const Duration(milliseconds: 400));
         expect(tester.takeException(), isNull);
         expect(find.text('Eating hand'), findsOneWidget);

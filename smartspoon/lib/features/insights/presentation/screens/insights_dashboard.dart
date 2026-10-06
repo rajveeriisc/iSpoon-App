@@ -71,7 +71,7 @@ class _InsightsDashboardState extends State<InsightsDashboard> {
                 // notification bell, consistent with the Home tab.
                 const PremiumHeader(
                   title: 'Insights',
-                  subtitle: 'Recent behavior & trends',
+                  subtitle: 'How your meals have been going',
                 ),
                 Expanded(
                   child: RefreshIndicator(
@@ -144,7 +144,7 @@ class _InsightsDashboardState extends State<InsightsDashboard> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Key Observations',
+                                  'What stands out',
                                   style: GoogleFonts.figtree(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w700,
@@ -152,7 +152,7 @@ class _InsightsDashboardState extends State<InsightsDashboard> {
                                   ),
                                 ),
                                 Text(
-                                  'Recent behavior & trends',
+                                  'Picked up from your recent meals',
                                   style: GoogleFonts.figtree(
                                     fontSize: 13,
                                     color: colorScheme.onSurface.withValues(
@@ -322,7 +322,7 @@ class _InsightsDashboardState extends State<InsightsDashboard> {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  'Keep logging meals with your spoon — insights show up once we have enough data to compare.',
+                  'Eat a few more meals with your spoon and patterns worth mentioning will show up here.',
                   style: GoogleFonts.figtree(
                     fontSize: 14,
                     color: colorScheme.onSurface,

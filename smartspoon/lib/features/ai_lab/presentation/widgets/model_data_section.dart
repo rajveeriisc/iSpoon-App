@@ -26,9 +26,9 @@ class ModelDataSection extends StatelessWidget {
           tilePadding: const EdgeInsets.symmetric(horizontal: 18),
           childrenPadding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
           leading: Icon(Icons.tune_rounded, color: theme.colorScheme.primary),
-          title: Text('Model & data',
+          title: Text('Settings & how it works',
               style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
-          subtitle: Text('Hand setting, how the model works, record a meal',
+          subtitle: Text('Which hand you use, how tracking works, sharing a meal',
               style: theme.textTheme.bodySmall?.copyWith(color: mutedText(context))),
           expandedCrossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -113,23 +113,28 @@ class _ModelFacts extends StatelessWidget {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       const _Heading('How it works'),
       Text(
-        'Bites: a model trained on ${m.people} people and ${m.bites} labelled '
-        'bites watches the spoon tilt toward your mouth and back. Tested on '
-        'people it had never seen, it found ${(m.evaluation.recall * 100).round()}% '
-        'of bites, and ${(m.evaluation.precision * 100).round()}% of what it '
-        'counted were real bites.',
+        'Counting bites: your spoon watches itself tilt up to your mouth and '
+        'back down. It learned that movement from ${m.bites} bites recorded by '
+        '${m.people} people. Checked against people it had never seen before, '
+        'it caught ${(m.evaluation.recall * 100).round()}% of real bites, and '
+        '${(m.evaluation.precision * 100).round()}% of what it counted was '
+        'genuinely a bite.',
         style: style,
       ),
       const SizedBox(height: 6),
       Text(
-        'Steadiness: looks for a regular 4–12 Hz shake in the spoon\'s rotation. '
-        'Normal eaters read ${m.steadiness.normalSteadyPctMin.round()}–100% steady'
-        '${shake == null ? '' : '; a simulated tremor was caught in ${(shake * 100).round()}% of moments'}. '
-        'It has not yet been tested on people with tremor.',
+        'Steadiness: it listens for a regular shake while you eat, between 4 '
+        'and 12 times a second. People without a tremor usually read '
+        '${m.steadiness.normalSteadyPctMin.round()}% steady or better'
+        '${shake == null ? '' : ', and in testing it picked up an added shake ${(shake * 100).round()}% of the time'}. '
+        'It has not been tried with people who have a tremor yet, so treat it '
+        'as something to follow over time rather than a verdict.',
         style: style,
       ),
       const SizedBox(height: 6),
-      Text('Model v${m.version}, trained ${m.trainedOn}. Everything runs on your phone.',
+      Text(
+          'Version ${m.version}, built ${m.trainedOn}. All of this runs on your '
+          'phone — nothing about your meals is sent anywhere to work it out.',
           style: style),
     ]);
   }
@@ -147,11 +152,12 @@ class _Recorder extends StatelessWidget {
     final r = data.recorder;
     final muted = theme.textTheme.bodySmall?.copyWith(color: mutedText(context));
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const _Heading('Help improve the model'),
+      const _Heading('Help improve iSpoon'),
       if (!r.recording) ...[
         Text(
-          'Record a meal and tap Bite each time the spoon reaches the mouth. '
-          'Recordings stay on this phone until you share them.',
+          'Record a meal and tap Bite each time the spoon reaches your mouth. '
+          'That gives us a meal we know the answer to, which is how the '
+          'counting gets better. It stays on your phone until you send it.',
           style: muted,
         ),
         const SizedBox(height: 10),
@@ -159,20 +165,26 @@ class _Recorder extends StatelessWidget {
           OutlinedButton.icon(
             onPressed: data.streaming ? actions.startRecording : null,
             icon: const Icon(Icons.fiber_manual_record, size: 16),
-            label: const Text('Record a labelled meal'),
+            label: const Text('Record a meal'),
           ),
           if (r.lastSavedPath != null)
             TextButton.icon(
               onPressed: () => Share.shareXFiles([XFile(r.lastSavedPath!)],
                   text: 'SmartSpoon labelled meal'),
               icon: const Icon(Icons.ios_share, size: 16),
-              label: const Text('Share last recording'),
+              label: const Text('Send last recording'),
             ),
         ]),
         const SizedBox(height: 4),
-        Text('${r.savedCount} recording(s) on this phone.', style: muted),
+        Text(
+            r.savedCount == 1
+                ? '1 recording saved on this phone.'
+                : '${r.savedCount} recordings saved on this phone.',
+            style: muted),
       ] else ...[
-        Text('Recording · ${r.seconds.round()} s · ${r.marks} bite(s) marked',
+        Text(
+            'Recording · ${r.seconds.round()}s · ${r.marks} '
+            '${r.marks == 1 ? 'bite' : 'bites'} marked',
             style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700)),
         const SizedBox(height: 10),
         SizedBox(
@@ -215,14 +227,14 @@ class _RawSensor extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const _Heading('Live spoon rotation'),
+      const _Heading('Spoon movement'),
       SizedBox(
         height: 70,
         child: ValueListenableBuilder<List<double>>(
           valueListenable: actions.liveGyro,
           builder: (context, v, _) => v.length < 2
               ? Center(
-                  child: Text('No sensor data yet.',
+                  child: Text('Nothing from the spoon yet.',
                       style: theme.textTheme.bodySmall?.copyWith(color: mutedText(context))))
               : LineChart(
                   LineChartData(
@@ -248,7 +260,7 @@ class _RawSensor extends StatelessWidget {
                 ),
         ),
       ),
-      Text('Rotation speed, last 2 s (deg/s)',
+      Text('How fast the spoon is turning, over the last 2 seconds',
           style: theme.textTheme.bodySmall?.copyWith(fontSize: 11, color: mutedText(context))),
     ]);
   }

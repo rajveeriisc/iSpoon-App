@@ -107,12 +107,12 @@ class TremorCharts extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Collecting a steady sample',
+                        'Getting a reading',
                         style: Theme.of(context).textTheme.titleSmall,
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Hold and use the spoon naturally. A reading appears after about 5 seconds of movement.',
+                        'Keep eating as you normally would — this fills in after a few seconds of movement.',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],
@@ -237,10 +237,10 @@ class TremorCharts extends StatelessWidget {
                 const SizedBox(height: AppTheme.spaceSm),
                 Text(
                   frequency > 0
-                      ? 'Measured by Mealsense over ${sampleSeconds.round()} s: '
-                            'index ${magnitude.toStringAsFixed(2)} / 3, rhythm ${frequency.toStringAsFixed(1)} Hz'
-                      : 'Measured by Mealsense over ${sampleSeconds.round()} s: '
-                            'index ${magnitude.toStringAsFixed(2)} / 3, no repeated rhythm',
+                      ? 'From ${sampleSeconds.round()} seconds of movement, with a '
+                            'repeated shake about ${frequency.toStringAsFixed(1)} times a second'
+                      : 'From ${sampleSeconds.round()} seconds of movement, with no '
+                            'repeated shake found',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
                 const SizedBox(height: AppTheme.spaceSm),
