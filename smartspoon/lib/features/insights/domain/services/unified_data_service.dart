@@ -1936,6 +1936,10 @@ class UnifiedDataService extends ChangeNotifier with WidgetsBindingObserver {
           paceBpm: eatingSpeed,
           durationMinutes: sessionDurationSeconds / 60.0,
           tremor: finalTremorIndex ?? -1.0, // Issue #9: -1 = not measured (skip EWMA update)
+          // Breakfast and dinner are not the same meal; the model keeps a
+          // separate pace baseline per type and pools it toward the overall
+          // mean until that type has enough samples of its own.
+          mealType: capturedMealType,
         ));
       }
 
@@ -1987,13 +1991,8 @@ class UnifiedDataService extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   // Helper: Determine Meal Type based on time of day
-  String _getMealTypeByTime() {
-    final hour = DateTime.now().hour;
-    if (hour < 11) return 'Breakfast';
-    if (hour >= 11 && hour < 15) return 'Lunch';
-    if (hour >= 15 && hour < 18) return 'Snack';
-    return 'Dinner';
-  }
+  String _getMealTypeByTime() =>
+      PersonalizedEatingModel.mealTypeForHour(DateTime.now().hour);
 
   /// Build and show the daily summary notification from today's DB data.
   /// Only fires in the evening (after 18:00) to avoid noise during the day.

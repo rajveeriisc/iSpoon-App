@@ -18,6 +18,7 @@ import 'package:smartspoon/features/ai_lab/domain/engine/handedness.dart';
 import 'package:smartspoon/features/ai_lab/domain/engine/meal_tracker.dart';
 import 'package:smartspoon/features/ai_lab/domain/engine/steadiness_analyzer.dart';
 import 'package:smartspoon/features/ai_lab/domain/insights/eating_insights.dart';
+import 'package:smartspoon/features/ai_lab/domain/services/personalized_eating_model.dart';
 import 'package:smartspoon/features/ai_lab/domain/services/ai_lab_profile_store.dart';
 import 'package:smartspoon/features/ai_lab/domain/services/ai_lab_view_data.dart';
 import 'package:smartspoon/features/ai_lab/domain/services/training_recorder.dart';
@@ -460,14 +461,16 @@ class AiLabService extends ChangeNotifier implements AiLabActions {
         rhythmicWindows: t.rhythmicWindows,
         rhythmHz: t.rhythmHz,
       );
-      tips = coachTips(metrics, baseline: profile?.baseline, live: true);
+      tips = _withPersonalTip(
+          coachTips(metrics, baseline: profile?.baseline, live: true),
+          metrics);
     } else if (t.phase == MealPhase.finished && t.lastMeal != null) {
       final last = t.lastMeal!;
       bites = last.bites;
       start = last.start;
       end = last.end;
       metrics = _finishedMetrics ?? _metricsOf(last);
-      tips = _finishedTips;
+      tips = _withPersonalTip(_finishedTips, metrics);
     }
     final id = _deviceId;
     return AiLabViewData(
@@ -503,5 +506,56 @@ class AiLabService extends ChangeNotifier implements AiLabActions {
     _ticker?.cancel();
     profiles.removeListener(notifyListeners);
     super.dispose();
+  }
+
+  /// Puts this person's own baseline in front of the generic advice.
+  ///
+  /// The per-person model existed but nothing ever read it — feedbackForMeal
+  /// had no callers, so every tip on this page was the same population rule
+  /// for everybody. This is the one piece of coaching that is actually about
+  /// the person using the spoon, so it leads when it is available.
+  List<CoachTip> _withPersonalTip(List<CoachTip> base, MealMetrics? m) {
+    final pace = m?.bitesPerMin;
+    // bitesPerMin is already null under 30 s; a handful of bites is still too
+    // few for the rate to be meaningful.
+    if (pace == null || m == null || m.bites < 5 || _spoonKey.isEmpty) {
+      return base;
+    }
+    final mealType =
+        PersonalizedEatingModel.mealTypeForHour(DateTime.now().hour);
+    final j = PersonalizedEatingModel()
+        .judgeMeal(_spoonKey, paceBpm: pace, mealType: mealType);
+    if (j == null) return base;
+
+    final obs = j.observedPace.toStringAsFixed(0);
+    final usual = j.baselinePace.toStringAsFixed(0);
+    final tip = switch (j.verdict) {
+      PaceVerdict.faster => CoachTip(
+          id: 'personal_pace_fast',
+          kind: TipKind.nudge,
+          title: 'Quicker than your usual',
+          body: '$obs bites/min, against the $usual you normally keep at '
+              '${mealType.toLowerCase()}. Setting the spoon down between '
+              'bites brings it back.',
+          priority: 70,
+        ),
+      PaceVerdict.slower => CoachTip(
+          id: 'personal_pace_slow',
+          kind: TipKind.positive,
+          title: 'Gentler than your usual',
+          body: '$obs bites/min, against your usual $usual. Slowing down like '
+              'this gives you time to notice you are full.',
+          priority: 70,
+        ),
+      PaceVerdict.usual => CoachTip(
+          id: 'personal_pace_usual',
+          kind: TipKind.positive,
+          title: 'On your usual rhythm',
+          body: '$obs bites/min — right where your '
+              '${mealType.toLowerCase()} meals normally sit.',
+          priority: 70,
+        ),
+    };
+    return [tip, ...base].take(3).toList(growable: false);
   }
 }
