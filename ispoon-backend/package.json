@@ -1,0 +1,42 @@
+{
+    "name": "ispoon-backend",
+    "version": "1.0.0",
+    "type": "module",
+    "main": "src/server.js",
+    "engines": {
+        "node": ">=22"
+    },
+    "scripts": {
+        "start": "node src/server.js",
+        "dev": "nodemon src/server.js",
+        "migrate": "node src/scripts/migrate.js",
+    "verify:db": "node src/scripts/verifyDatabaseIntegrity.js",
+    "audit:tremor-db": "node src/scripts/auditTremorSchema.js",
+        "verify:auth-sessions": "node src/scripts/verifyAuthSessions.js",
+        "cleanup": "node src/scripts/cleanup.js",
+        "test": "NODE_ENV=test node --test --test-reporter=spec test/*.test.js",
+        "test:unit": "NODE_ENV=test node --test --test-reporter=spec test/*.test.js",
+        "check:syntax": "node src/scripts/checkSyntax.js",
+        "check": "npm run check:syntax && npm run test:validation && npm test",
+        "test:auth": "node src/scripts/testAuth.js",
+        "test:validation": "node src/scripts/testValidation.js",
+        "test:auth-security": "node --test test/auth-security.test.js"
+    },
+    "dependencies": {
+        "cors": "^2.8.6",
+        "dotenv": "^16.4.5",
+        "express": "^4.22.2",
+        "express-rate-limit": "^7.4.0",
+        "firebase-admin": "^14.2.0",
+        "helmet": "^7.1.0",
+        "jsonwebtoken": "^9.0.3",
+        "multer": "^2.2.0",
+        "pg": "^8.22.0",
+        "resend": "^6.17.2",
+        "sharp": "^0.35.3",
+        "zod": "^4.4.3"
+    },
+    "devDependencies": {
+        "nodemon": "^3.1.14"
+    }
+}

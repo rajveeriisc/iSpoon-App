@@ -1,0 +1,256 @@
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400&family=Figtree:wght@300;400;500;600;700&display=swap");
+@import "tailwindcss";
+
+/* ─── Kinetic Health Design Tokens (from Stitch) ─── */
+:root {
+  /* Surfaces (Light Mode) */
+  --bg:                    #fdfaf4; /* color-cream */
+  --surface:               #f6efe4; /* color-canvas */
+  --surface-card:          #ffffff;
+  --surface-card-high:     #f1e8da; /* color-oat */
+  --surface-card-highest:  #e6dacb; /* color-line */
+  --surface-border:        rgba(0,0,0,0.06);
+
+  /* Brand / Primary */
+  --amber:                 #c77b43;
+  --amber-light:           #d86a4b; /* paprika for more contrast in light mode */
+  --amber-glow:            rgba(199,123,67,0.15);
+
+  /* Text (Light Mode) */
+  --text-primary:          #352a22; /* color-roast */
+  --text-secondary:        #6e5c4e; /* color-roast-soft */
+  --text-muted:            #b3a496; /* color-roast-tertiary */
+  --text-subtle:           rgba(53,42,34,0.4);
+
+  /* Accents */
+  --sage:                  #9db089;
+  --sage-deep:             #6f8466;
+  --paprika:               #d86a4b;
+
+  /* Legacy light-mode palette (for light sections) */
+  --color-canvas:          #f6efe4;
+  --color-cream:           #fdfaf4;
+  --color-oat:             #f1e8da;
+  --color-roast:           #352a22;
+  --color-roast-soft:      #6e5c4e;
+  --color-roast-tertiary:  #b3a496;
+  --color-caramel:         #c77b43;
+  --color-honey:           #e9b85c;
+  --color-sage:            #9db089;
+  --color-sage-deep:       #6f8466;
+  --color-paprika:         #d86a4b;
+  --color-line:            #e6dacb;
+
+  /* Fonts */
+  --font-serif:   'Fraunces', Georgia, serif;
+  --font-sans:    'Figtree', system-ui, sans-serif;
+
+  /* Shadows / Glows (Light Mode) */
+  --glow-amber:   0 0 60px rgba(199,123,67,0.18), 0 0 120px rgba(199,123,67,0.06);
+  --shadow-card:  0 1px 0 var(--surface-border), 0 12px 24px rgba(0,0,0,0.04);
+}
+
+:root.dark {
+  /* Surfaces (Dark Mode) */
+  --bg:                    #121317;
+  --surface:               #1a1b1f;
+  --surface-card:          #1e1f23;
+  --surface-card-high:     #292a2e;
+  --surface-card-highest:  #343539;
+  --surface-border:        rgba(255,255,255,0.09);
+
+  /* Brand / Primary */
+  --amber-light:           #ffb785;
+
+  /* Text (Dark Mode) */
+  --text-primary:          #e3e2e7;
+  --text-secondary:        #d8c2b5;
+  --text-muted:            #a18d81;
+  --text-subtle:           rgba(227,226,231,0.5);
+
+  /* Shadows / Glows (Dark Mode) */
+  --shadow-card:  0 1px 0 var(--surface-border), 0 24px 48px rgba(0,0,0,0.4);
+}
+
+@theme inline {
+  /* Map to Tailwind */
+  --color-bg:               var(--bg);
+  --color-surface:          var(--surface);
+  --color-surface-card:     var(--surface-card);
+  --color-amber:            var(--amber);
+  --color-amber-light:      var(--amber-light);
+  --color-text-primary:     var(--text-primary);
+  --color-text-secondary:   var(--text-secondary);
+  --color-text-muted:       var(--text-muted);
+
+  /* Legacy (light sections still use these) */
+  --color-canvas:           var(--color-canvas);
+  --color-cream:            var(--color-cream);
+  --color-oat:              var(--color-oat);
+  --color-roast:            var(--color-roast);
+  --color-roast-soft:       var(--color-roast-soft);
+  --color-roast-tertiary:   var(--color-roast-tertiary);
+  --color-caramel:          var(--color-caramel);
+  --color-honey:            var(--color-honey);
+  --color-sage:             var(--color-sage);
+  --color-sage-deep:        var(--color-sage-deep);
+  --color-paprika:          var(--color-paprika);
+  --color-line:             var(--color-line);
+
+  --font-serif:             var(--font-serif);
+  --font-sans:              var(--font-sans);
+}
+
+/* ─── Base ─── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: var(--amber);
+  color: #1a0f07;
+}
+
+/* ─── Typography ─── */
+.font-serif { font-family: var(--font-serif) !important; }
+.font-sans  { font-family: var(--font-sans)  !important; }
+
+/* ─── Glassmorphism ─── */
+.glass {
+  background: rgba(253, 250, 244, 0.85); /* Light glass by default */
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--surface-border);
+}
+
+:root.dark .glass {
+  background: rgba(26, 27, 31, 0.7);
+}
+
+.glass-light {
+  background: rgba(253, 250, 244, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(199,123,67,0.12);
+}
+
+/* ─── Ambient amber glow ─── */
+.glow-amber {
+  filter: drop-shadow(0 0 40px rgba(199,123,67,0.25));
+}
+
+.glow-amber-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 50%, rgba(199,123,67,0.12) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+/* ─── Gradient text ─── */
+.gradient-text {
+  background: linear-gradient(135deg, #ffb785 0%, #c77b43 60%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ─── Surface card ─── */
+.card-dark {
+  background: var(--surface-card);
+  border: 1px solid var(--surface-border);
+  box-shadow: var(--shadow-card);
+}
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--surface-card-high); border-radius: 3px; }
+
+/* ─── Animations ─── */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-14px); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 20px rgba(199,123,67,0.3); }
+  50%       { box-shadow: 0 0 40px rgba(199,123,67,0.6); }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+
+@keyframes ping-slow {
+  0%   { transform: scale(1); opacity: 0.6; }
+  75%, 100% { transform: scale(1.6); opacity: 0; }
+}
+
+@keyframes gradient-shift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes particle-rise {
+  0%   { transform: translateY(0) scale(1); opacity: 0.6; }
+  100% { transform: translateY(-120px) scale(0); opacity: 0; }
+}
+
+.animate-float     { animation: float 5s ease-in-out infinite; }
+.animate-pulse-glow{ animation: pulse-glow 2.5s ease-in-out infinite; }
+.animate-shimmer {
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.08) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer 2.5s ease-in-out infinite;
+}
+
+/* ─── Scroll progress bar ─── */
+#scroll-progress {
+  position: fixed;
+  top: 0; left: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--amber), var(--amber-light));
+  z-index: 9999;
+  transform-origin: left;
+  transition: transform 0.1s linear;
+}
+
+/* ─── Utility ─── */
+.text-balance { text-wrap: balance; }
+
+.section-label {
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--amber);
+}
+
+/* ─── Bento grid ─── */
+.bento-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 1rem;
+}
+
+.bento-span-8 { grid-column: span 8; }
+.bento-span-4 { grid-column: span 4; }
+.bento-span-6 { grid-column: span 6; }
+
+@media (max-width: 768px) {
+  .bento-span-8,
+  .bento-span-4,
+  .bento-span-6 { grid-column: span 12; }
+}

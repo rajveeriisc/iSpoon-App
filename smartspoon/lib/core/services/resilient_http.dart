@@ -1,0 +1,94 @@
+// resilient_http.dart — shared HTTP helper with stale-connection retry.
+//
+// Static get/post/put wrappers used by every backend-facing service so retry
+// policy and tunnel-bypass headers live in one place. _withStaleTlsRetry sends
+// the request on the shared pooled client and, if it fails with a
+// HandshakeException / "Connection closed" (a pooled TLS socket the server —
+// e.g. an ngrok tunnel — already closed), retries once on a fresh client.
+// tunnelBypassHeaders() adds ngrok skip-warning headers whenever the API
+// host is ngrok (debug and release Desktop APKs).
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
+import 'package:http/http.dart' as http;
+import '../config/app_config.dart';
+
+/// Shared HTTP plumbing for services that talk to the backend
+/// (SyncService, AuthService, ...).
+///
+/// Every request gets one retry on a stale pooled-TLS connection
+/// (HandshakeException / "Connection closed") — the global http client
+/// reuses pooled connections that a tunnel like ngrok may have already
+/// closed on its end; retrying once with a fresh client succeeds.
+///
+/// Keeping this in one place means retry policy and tunnel-bypass headers
+/// can't silently diverge between the sync and auth paths.
+class ResilientHttp {
+  ResilientHttp._();
+
+  static const String _hmacSecret = 'smartspoon_hmac_secret_2026';
+
+  static Map<String, String> _signRequest(Object? body, Map<String, String>? headers) {
+    final signedHeaders = headers == null ? <String, String>{} : Map<String, String>.from(headers);
+    // Best effort stringification matching Node.js behavior
+    final bodyString = body is String ? body : (body != null ? jsonEncode(body) : '');
+    final hmac = Hmac(sha256, utf8.encode(_hmacSecret));
+    final digest = hmac.convert(utf8.encode(bodyString));
+    signedHeaders['x-signature'] = digest.toString();
+    return signedHeaders;
+  }
+
+  /// Tunnel bypass headers (ngrok/localtunnel).
+  /// Must apply in release too: a Desktop ngrok APK uses https://*.ngrok-free.dev
+  /// and the interstitial HTML would otherwise replace every API response.
+  static Map<String, String> tunnelBypassHeaders() {
+    if (AppConfig.apiBaseUrl.contains('ngrok')) {
+      return {
+        'ngrok-skip-browser-warning': 'true',
+        'Bypass-Tunnel-Reminder': 'true',
+      };
+    }
+    return {};
+  }
+
+  static Future<http.Response> get(Uri uri, {Map<String, String>? headers}) =>
+      _withStaleTlsRetry(
+        (client) => client == null
+            ? http.get(uri, headers: headers)
+            : client.get(uri, headers: headers),
+      );
+
+  static Future<http.Response> post(Uri uri,
+          {Map<String, String>? headers, Object? body}) =>
+      _withStaleTlsRetry(
+        (client) => client == null
+            ? http.post(uri, headers: _signRequest(body, headers), body: body)
+            : client.post(uri, headers: _signRequest(body, headers), body: body),
+      );
+
+  static Future<http.Response> put(Uri uri,
+          {Map<String, String>? headers, Object? body}) =>
+      _withStaleTlsRetry(
+        (client) => client == null
+            ? http.put(uri, headers: _signRequest(body, headers), body: body)
+            : client.put(uri, headers: _signRequest(body, headers), body: body),
+      );
+
+  static Future<http.Response> _withStaleTlsRetry(
+    Future<http.Response> Function(http.Client? client) send,
+  ) async {
+    try {
+      return await send(null).timeout(AppConfig.connectionTimeout);
+    } catch (e) {
+      final msg = e.toString();
+      if (msg.contains('HandshakeException') || msg.contains('Connection closed')) {
+        final client = http.Client();
+        try {
+          return await send(client).timeout(AppConfig.connectionTimeout);
+        } finally {
+          client.close();
+        }
+      }
+      rethrow;
+    }
+  }
+}

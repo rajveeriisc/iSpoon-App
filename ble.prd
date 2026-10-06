@@ -1,0 +1,2335 @@
+/*
+ * I SPOON — full firmware
+ *
+ *   Touch + animated splash + temperature display
+ * + BMI323 bite counter (BLE binary packets)
+ * + nPM1304 battery monitor (10-bit ADC over I2C)
+ * + Top status bar:  [BT-icon]  [battery%]
+ *
+ *   2 s touch hold  -> wake panel, "I SPOON" splash, then live temp view.
+ *                      BLE starts advertising. PMIC keeps charging if USB.
+ *   3 s touch hold  -> sleep panel, stop BLE, disconnect, reset bite count.
+ *
+ * Top bar (only visible in UI_TEMP):
+ *   - Battery percent as text in the top-right corner (e.g. "85%")
+ *   - Bluetooth icon to the left of it, ONLY when a phone is connected
+ *
+ * Target: nRF52840, NCS v3.1.x.
+ *
+ * BLE binary packet format (little-endian):
+ *   [type:1] [seq:2] [ts_ms:4] [payload]
+ *
+ * Types:
+ *   0x01 IMU    : 6 x int16  (ax,ay,az,gx,gy,gz raw LSB)        -> 19 B
+ *   0x02 STATE  : uint8 state_id                                ->  8 B
+ *   0x03 BITE   : uint16 count + 3 x int16 rot*10 deg           -> 15 B
+ *   0x04 RECAL  : float32 baseline (g)                          -> 11 B
+ *   0x05 INFO   : uint8 info_code                               ->  8 B
+ *   0x06 BATT   : uint16 mV + uint8 percent + uint8 flags       -> 12 B
+ *   0x07 TEMP   : int8 Celsius                                  ->  8 B
+ */
+
+#include <zephyr/kernel.h>
+#include <zephyr/device.h>
+#include <zephyr/drivers/spi.h>
+#include <zephyr/drivers/gpio.h>
+#include <zephyr/drivers/adc.h>
+#include <zephyr/drivers/i2c.h>
+#include <zephyr/sys/printk.h>
+#include <zephyr/sys/atomic.h>
+#include <zephyr/sys/poweroff.h>
+#include <zephyr/logging/log.h>
+
+#include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/conn.h>
+#include <zephyr/bluetooth/uuid.h>
+#include <zephyr/bluetooth/gatt.h>
+
+#include <hal/nrf_gpio.h>
+
+#include <math.h>
+#include <string.h>
+#include <limits.h>
+#include <stdio.h>
+#include <stdbool.h>
+#include <nrfx_saadc.h>
+
+LOG_MODULE_REGISTER(spoon, LOG_LEVEL_INF);
+
+/* ================= DISPLAY CONFIG ================= */
+
+#define TFT_VISIBLE_W   160
+#define TFT_VISIBLE_H    80
+#define TFT_GRAM_W      162
+#define TFT_GRAM_H      132
+#define TFT_X_OFFSET      1
+#define TFT_Y_OFFSET     26
+
+#define TFT_CS_PIN   12
+#define TFT_DC_PIN   11
+#define TFT_RST_PIN  10
+#define LED_PIN      14
+
+#define SPI_NODE     DT_NODELABEL(spi3)
+#define SCALE        3                   /* big text (TEMP, value, splash) */
+
+#define COLOR_BG     0xFFFF              /* white      */
+#define COLOR_FG     0x0000              /* black      */
+#define COLOR_BT     0x001F              /* blue       */
+#define COLOR_RED    0xF800              /* RGB565 red — battery low warning */
+#define COLOR_GREEN  0x0400              /* RGB565 dark green — battery charging.
+                                          * Pure 0x07E0 is too bright on white;
+                                          * 0x0400 (~25% green only) reads as
+                                          * a saturated forest-green and is much
+                                          * more legible. */
+
+/* Battery percent at or below this is shown in red. */
+#define BATT_LOW_PCT      20
+
+/* ================= TOUCH CONFIG ================= */
+
+#define TOUCH_PIN          16
+#define TOUCH_ON_HOLD_MS   2000
+#define TOUCH_OFF_HOLD_MS  3000
+
+#define BLANK_HOLD_MS      400
+#define LETTER_STEP_MS     80
+#define SPLASH_HOLD_MS     900
+
+#define LOOP_MS            50
+
+/* ================= ADC FILTER CONFIG ================= */
+
+#define FILTER_LEN         8
+#define HYSTERESIS_C       0.5f
+
+/* ================= BMI323 ================= */
+
+#define I2C_NODE                DT_NODELABEL(i2c0)
+
+#define BMI323_ADDR             0x68
+#define BMI323_REG_CHIP_ID      0x00
+#define BMI323_REG_ACC_DATA_X   0x03
+#define BMI323_REG_ACC_CONF     0x20
+#define BMI323_REG_GYR_CONF     0x21
+#define BMI323_REG_CMD          0x7E
+#define BMI323_CMD_SOFT_RESET   0xDEAF
+#define BMI323_ACC_CONF_VAL     0x4027
+#define BMI323_GYR_CONF_VAL     0x4047
+#define BMI323_CHIP_ID          0x43
+#define ACC_LSB_PER_G           4096.0f
+#define GYR_LSB_PER_DPS         16.384f
+
+/* ================= nPM1304 ================= */
+
+#define NPM_ADDR                0x6B
+#define NPM_BASE_VBUS           0x02
+#define NPM_BASE_CHG            0x03    /* CRITICAL: was 0x04 — wrong! Confirmed
+                                         * via DevZone i2cset traces and the
+                                         * Zephyr mfd driver source: CHGR_BASE
+                                         * is 0x03. Using 0x04 silently writes
+                                         * to a different register block, which
+                                         * is why charging never started. */
+#define NPM_BASE_ADC            0x05
+#define NPM_REG_TASKUPDATEILIM  0x00
+#define NPM_REG_VBUSINILIM0     0x01
+#define NPM_REG_VBUSINSTATUS    0x07
+#define NPM_REG_BCHGENABLESET   0x04
+#define NPM_REG_BCHGENABLECLR   0x05
+#define NPM_REG_BCHGDISABLESET  0x06
+#define NPM_REG_BCHGISETMSB     0x08
+#define NPM_REG_BCHGISETLSB     0x09
+#define NPM_REG_BCHGVTERM       0x0C
+#define NPM_REG_BCHGVTERMR      0x0D
+#define NPM_REG_BCHGCHARGESTATUS 0x34
+#define NPM_REG_TASKVBATMEAS    0x00
+#define NPM_REG_ADCNTCRSEL      0x0A
+#define NPM_REG_ADCVBATMSB      0x11
+#define NPM_REG_ADCGP0LSBS      0x15
+
+#define NPM_CHGSTAT_BATTDET     BIT(0)
+#define NPM_CHGSTAT_COMPLETE    BIT(1)
+#define NPM_CHGSTAT_TRICKLE     BIT(2)
+#define NPM_CHGSTAT_CC          BIT(3)
+#define NPM_CHGSTAT_CV          BIT(4)
+#define NPM_CHGSTAT_CHARGING    (NPM_CHGSTAT_TRICKLE|NPM_CHGSTAT_CC|NPM_CHGSTAT_CV)
+#define NPM_VTERM_4V20          0x08
+#define NPM_CHG_CURRENT_MA      100
+
+#define BATT_POLL_MS            2000
+
+/* ---- Battery percent smoothing config ----
+ *
+ * When USB plugs in, VBAT physically rebounds (load-drop goes away +
+ * charge current contributes a small lift). For our 1000 mAh cell
+ * this typically shows up as a 1-2 percent jump.
+ *
+ * We hide it with a slew limiter that activates around charge-state
+ * transitions. For SOC_TRANSIENT_SAMPLES readings after USB plug or
+ * unplug, the displayed percent can change by at most SOC_SLEW_MAX_PCT
+ * per 2-second sample. That stretches the jump into a smooth climb
+ * over ~12 seconds.
+ *
+ * Steady-state behavior is unchanged — the slew limit only applies in
+ * the window right after a state change.
+ */
+#define SOC_TRANSIENT_SAMPLES   6         /* 6 samples * 2s = 12 s window */
+#define SOC_SLEW_MAX_PCT        1         /* max change per 2-s sample in transient */
+
+/* ================= PMIC DEBUG MODE =================
+ *
+ * Set to 1 to replace the normal temperature view with a register dump
+ * showing the full charger state on the TFT. Use this to diagnose why
+ * charging isn't working without needing RTT/UART access.
+ *
+ * Layout shown on screen:
+ *
+ *     VBUS  XX  USB Y
+ *     STAT  XX  ABCDE
+ *     ERR   XX  REASON
+ *     SENS  XX
+ *     ICHG  XX  XX
+ *     VBAT XXXXmV
+ *
+ * Where:
+ *   VBUS hex = VBUSINSTATUS register
+ *   USB Y    = 1 if USB detected, 0 otherwise
+ *   STAT hex = BCHGCHARGESTATUS register
+ *   ABCDE    = letter set: B=BattDet C=Complete T=Trickle  c=CC v=CV
+ *              (uppercase letter present = bit set)
+ *   ERR hex  = BCHGERRREASON register
+ *   SENS hex = BCHGERRSENSOR register
+ *   ICHG     = BCHGISETMSB / BCHGISETLSB readback (verify config landed)
+ */
+#define PMIC_DEBUG_VIEW   0
+
+/* ================= GLOBALS ================= */
+
+static const struct device *spi_dev;
+static const struct device *gpio0;
+static const struct device *gpio1;
+static const struct device *i2c_dev;
+
+/* ================= SPI ================= */
+
+static struct spi_config spi_cfg = {
+    .frequency = 16000000,
+    .operation = SPI_WORD_SET(8) | SPI_TRANSFER_MSB,
+};
+
+static inline void spi_fast(uint8_t b)
+{
+    struct spi_buf buf = { .buf = &b, .len = 1 };
+    struct spi_buf_set tx = { .buffers = &buf, .count = 1 };
+    spi_write(spi_dev, &spi_cfg, &tx);
+}
+
+static inline void spi_bulk(const uint8_t *data, size_t len)
+{
+    struct spi_buf buf = { .buf = (void *)data, .len = len };
+    struct spi_buf_set tx = { .buffers = &buf, .count = 1 };
+    spi_write(spi_dev, &spi_cfg, &tx);
+}
+
+/* ================= TFT LOW-LEVEL ================= */
+
+static void tft_cmd(uint8_t c)
+{
+    gpio_pin_set(gpio1, TFT_DC_PIN, 0);
+    gpio_pin_set(gpio1, TFT_CS_PIN, 0);
+    spi_fast(c);
+    gpio_pin_set(gpio1, TFT_CS_PIN, 1);
+}
+
+static void tft_data(uint8_t d)
+{
+    gpio_pin_set(gpio1, TFT_DC_PIN, 1);
+    gpio_pin_set(gpio1, TFT_CS_PIN, 0);
+    spi_fast(d);
+    gpio_pin_set(gpio1, TFT_CS_PIN, 1);
+}
+
+static void tft_set_addr(int x, int y, int w, int h)
+{
+    uint16_t x0 = x + TFT_X_OFFSET;
+    uint16_t y0 = y + TFT_Y_OFFSET;
+
+    tft_cmd(0x2A);
+    tft_data(x0 >> 8); tft_data(x0);
+    tft_data((x0 + w - 1) >> 8); tft_data(x0 + w - 1);
+
+    tft_cmd(0x2B);
+    tft_data(y0 >> 8); tft_data(y0);
+    tft_data((y0 + h - 1) >> 8); tft_data(y0 + h - 1);
+
+    tft_cmd(0x2C);
+}
+
+static void fill_color(uint16_t color)
+{
+    uint8_t hi = color >> 8;
+    uint8_t lo = color;
+
+    tft_set_addr(-TFT_X_OFFSET, -TFT_Y_OFFSET, TFT_GRAM_W, TFT_GRAM_H);
+
+    static uint8_t row[TFT_GRAM_W * 2];
+    for (int i = 0; i < TFT_GRAM_W; i++) {
+        row[i * 2]     = hi;
+        row[i * 2 + 1] = lo;
+    }
+    gpio_pin_set(gpio1, TFT_DC_PIN, 1);
+    gpio_pin_set(gpio1, TFT_CS_PIN, 0);
+    for (int y = 0; y < TFT_GRAM_H; y++) {
+        spi_bulk(row, sizeof(row));
+    }
+    gpio_pin_set(gpio1, TFT_CS_PIN, 1);
+}
+
+/* Fill an arbitrary rectangle. Uses bulk-row strategy for speed. */
+static void fill_rect(int x, int y, int w, int h, uint16_t color)
+{
+    if (w <= 0 || h <= 0) return;
+
+    uint8_t hi = color >> 8, lo = color;
+    static uint8_t row[TFT_GRAM_W * 2];
+    int rw = (w > TFT_GRAM_W) ? TFT_GRAM_W : w;
+    for (int i = 0; i < rw; i++) {
+        row[i * 2]     = hi;
+        row[i * 2 + 1] = lo;
+    }
+
+    tft_set_addr(x, y, w, h);
+    gpio_pin_set(gpio1, TFT_DC_PIN, 1);
+    gpio_pin_set(gpio1, TFT_CS_PIN, 0);
+    for (int yy = 0; yy < h; yy++) {
+        spi_bulk(row, w * 2);
+    }
+    gpio_pin_set(gpio1, TFT_CS_PIN, 1);
+}
+
+/* ================= TFT POWER ================= */
+
+static void tft_init(void)
+{
+    gpio_pin_set(gpio1, TFT_RST_PIN, 0);
+    k_msleep(50);
+    gpio_pin_set(gpio1, TFT_RST_PIN, 1);
+    k_msleep(120);
+
+    tft_cmd(0x11); k_msleep(120);
+    tft_cmd(0x36); tft_data(0xA8);
+    tft_cmd(0x3A); tft_data(0x05);
+    tft_cmd(0x29);
+}
+
+static void tft_wake(void)
+{
+    tft_cmd(0x11);
+    k_msleep(120);
+    tft_cmd(0x29);
+}
+
+static void tft_sleep(void)
+{
+    tft_cmd(0x28);
+    tft_cmd(0x10);
+    k_msleep(120);
+}
+
+/* ================= FONT (5x7) ================= */
+
+static const uint8_t font_T[5]     = {0x01,0x01,0x7F,0x01,0x01};
+static const uint8_t font_E[5]     = {0x7F,0x49,0x49,0x49,0x41};
+static const uint8_t font_M[5]     = {0x7F,0x02,0x04,0x02,0x7F};
+static const uint8_t font_P[5]     = {0x7F,0x09,0x09,0x09,0x06};
+static const uint8_t font_C[5]     = {0x3E,0x41,0x41,0x41,0x22};
+static const uint8_t font_I[5]     = {0x41,0x41,0x7F,0x41,0x41};
+static const uint8_t font_S[5]     = {0x46,0x49,0x49,0x49,0x31};
+static const uint8_t font_O[5]     = {0x3E,0x41,0x41,0x41,0x3E};
+static const uint8_t font_N[5]     = {0x7F,0x02,0x0C,0x10,0x7F};
+/* Additional letters used by the PMIC debug view (5x7 column-major) */
+static const uint8_t font_A[5]     = {0x7E,0x11,0x11,0x11,0x7E};
+static const uint8_t font_B[5]     = {0x7F,0x49,0x49,0x49,0x36};
+static const uint8_t font_D[5]     = {0x7F,0x41,0x41,0x22,0x1C};
+static const uint8_t font_F[5]     = {0x7F,0x09,0x09,0x09,0x01};
+static const uint8_t font_G[5]     = {0x3E,0x41,0x49,0x49,0x7A};
+static const uint8_t font_H[5]     = {0x7F,0x08,0x08,0x08,0x7F};
+static const uint8_t font_L[5]     = {0x7F,0x40,0x40,0x40,0x40};
+static const uint8_t font_R[5]     = {0x7F,0x09,0x19,0x29,0x46};
+static const uint8_t font_U[5]     = {0x3F,0x40,0x40,0x40,0x3F};
+static const uint8_t font_V[5]     = {0x1F,0x20,0x40,0x20,0x1F};
+static const uint8_t font_X[5]     = {0x63,0x14,0x08,0x14,0x63};
+static const uint8_t font_Y[5]     = {0x07,0x08,0x70,0x08,0x07};
+static const uint8_t font_colon[5] = {0x00,0x36,0x36,0x00,0x00};
+static const uint8_t font_deg[5]   = {0x06,0x09,0x09,0x06,0x00};
+static const uint8_t font_space[5] = {0x00,0x00,0x00,0x00,0x00};
+static const uint8_t font_minus[5] = {0x08,0x08,0x08,0x08,0x08};
+static const uint8_t font_pct[5]   = {0x23,0x13,0x08,0x64,0x62};   /* '%' */
+/* '~' overloaded as the lightning-bolt / zap glyph used while charging.
+ * Shape:  ..##.    top-right tip
+ *         ..#..
+ *         .#...    diagonal
+ *         ####.    horizontal kink
+ *         ..#..
+ *         .#...    continuing diagonal
+ *         .....
+ */
+static const uint8_t font_zap[5]   = {0x08,0x2C,0x1B,0x09,0x00};
+static const uint8_t font_0[5] = {0x3E,0x51,0x49,0x45,0x3E};
+static const uint8_t font_1[5] = {0x00,0x42,0x7F,0x40,0x00};
+static const uint8_t font_2[5] = {0x62,0x51,0x49,0x49,0x46};
+static const uint8_t font_3[5] = {0x22,0x49,0x49,0x49,0x36};
+static const uint8_t font_4[5] = {0x18,0x14,0x12,0x7F,0x10};
+static const uint8_t font_5[5] = {0x2F,0x49,0x49,0x49,0x31};
+static const uint8_t font_6[5] = {0x3E,0x49,0x49,0x49,0x30};
+static const uint8_t font_7[5] = {0x01,0x71,0x09,0x05,0x03};
+static const uint8_t font_8[5] = {0x36,0x49,0x49,0x49,0x36};
+static const uint8_t font_9[5] = {0x06,0x49,0x49,0x49,0x3E};
+
+static const uint8_t *get_char(char c)
+{
+    switch (c) {
+        case 'T': return font_T;  case 'E': return font_E;
+        case 'M': return font_M;  case 'P': return font_P;
+        case 'C': return font_C;  case 'I': return font_I;
+        case 'S': return font_S;  case 'O': return font_O;
+        case 'N': return font_N;  case 'o': return font_deg;
+        case 'A': return font_A;  case 'B': return font_B;
+        case 'D': return font_D;  case 'F': return font_F;
+        case 'G': return font_G;  case 'H': return font_H;
+        case 'L': return font_L;  case 'R': return font_R;
+        case 'U': return font_U;  case 'V': return font_V;
+        case 'X': return font_X;  case 'Y': return font_Y;
+        case ':': return font_colon;
+        case ' ': return font_space; case '-': return font_minus;
+        case '%': return font_pct;
+        case '~': return font_zap;     /* charging indicator */
+        case '0': return font_0;  case '1': return font_1;
+        case '2': return font_2;  case '3': return font_3;
+        case '4': return font_4;  case '5': return font_5;
+        case '6': return font_6;  case '7': return font_7;
+        case '8': return font_8;  case '9': return font_9;
+        default:  return font_space;
+    }
+}
+
+#define GLYPH_W      5
+#define GLYPH_H      7
+
+/* ----- Big-text drawing (used for splash, TEMP header, value) ----- */
+#define BIG_CELL_W   (6 * SCALE)
+#define BIG_CELL_H   (7 * SCALE)
+#define BIG_CELL_BYTES (BIG_CELL_W * BIG_CELL_H * 2)
+
+static void draw_char_big(int x, int y, char c, uint16_t fg, uint16_t bg)
+{
+    const uint8_t *g = get_char(c);
+    uint8_t fg_hi = fg >> 8, fg_lo = fg & 0xFF;
+    uint8_t bg_hi = bg >> 8, bg_lo = bg & 0xFF;
+
+    static uint8_t cell[BIG_CELL_BYTES];
+    int idx = 0;
+
+    for (int py = 0; py < BIG_CELL_H; py++) {
+        int gy = py / SCALE;
+        for (int px = 0; px < BIG_CELL_W; px++) {
+            int gx = px / SCALE;
+            int on = 0;
+            if (gx < GLYPH_W && gy < GLYPH_H) {
+                on = (g[gx] >> gy) & 1;
+            }
+            if (on) { cell[idx++] = fg_hi; cell[idx++] = fg_lo; }
+            else    { cell[idx++] = bg_hi; cell[idx++] = bg_lo; }
+        }
+    }
+
+    tft_set_addr(x, y, BIG_CELL_W, BIG_CELL_H);
+    gpio_pin_set(gpio1, TFT_DC_PIN, 1);
+    gpio_pin_set(gpio1, TFT_CS_PIN, 0);
+    spi_bulk(cell, BIG_CELL_BYTES);
+    gpio_pin_set(gpio1, TFT_CS_PIN, 1);
+}
+
+static void draw_text_big_at(int x, int y, const char *s, uint16_t fg, uint16_t bg)
+{
+    for (int i = 0; s[i]; i++) {
+        draw_char_big(x + i * BIG_CELL_W, y, s[i], fg, bg);
+    }
+}
+
+static void draw_text_big_center(const char *s, int y, uint16_t fg, uint16_t bg)
+{
+    int len = strlen(s);
+    int x = (TFT_VISIBLE_W - (len * BIG_CELL_W)) / 2;
+    if (x < 0) x = 0;
+    draw_text_big_at(x, y, s, fg, bg);
+}
+
+/* ----- Small-text drawing for the status bar (1× scale, 6×8 cell) ----- */
+#define SMALL_CELL_W   6                /* 5 cols + 1 gap */
+#define SMALL_CELL_H   8                /* 7 rows + 1 gap */
+#define SMALL_CELL_BYTES (SMALL_CELL_W * SMALL_CELL_H * 2)
+
+static void draw_char_small(int x, int y, char c, uint16_t fg, uint16_t bg)
+{
+    const uint8_t *g = get_char(c);
+    uint8_t fg_hi = fg >> 8, fg_lo = fg & 0xFF;
+    uint8_t bg_hi = bg >> 8, bg_lo = bg & 0xFF;
+
+    static uint8_t cell[SMALL_CELL_BYTES];
+    int idx = 0;
+
+    for (int py = 0; py < SMALL_CELL_H; py++) {
+        for (int px = 0; px < SMALL_CELL_W; px++) {
+            int on = 0;
+            if (px < GLYPH_W && py < GLYPH_H) {
+                on = (g[px] >> py) & 1;
+            }
+            if (on) { cell[idx++] = fg_hi; cell[idx++] = fg_lo; }
+            else    { cell[idx++] = bg_hi; cell[idx++] = bg_lo; }
+        }
+    }
+
+    tft_set_addr(x, y, SMALL_CELL_W, SMALL_CELL_H);
+    gpio_pin_set(gpio1, TFT_DC_PIN, 1);
+    gpio_pin_set(gpio1, TFT_CS_PIN, 0);
+    spi_bulk(cell, SMALL_CELL_BYTES);
+    gpio_pin_set(gpio1, TFT_CS_PIN, 1);
+}
+
+static void draw_text_small_at(int x, int y, const char *s, uint16_t fg, uint16_t bg)
+{
+    for (int i = 0; s[i]; i++) {
+        draw_char_small(x + i * SMALL_CELL_W, y, s[i], fg, bg);
+    }
+}
+
+/* ================= BLUETOOTH ICON ================= */
+/*
+ * 9x15 bitmap. Strokes are 2 pixels wide horizontally so the icon
+ * reads as a solid glyph rather than a wireframe of single-pixel
+ * lines. Drawn in blue on white.
+ *
+ * Shape: classic Bluetooth bind-rune. Vertical bar in cols 3-4,
+ * triangular tips at top and bottom, two side wings at the upper
+ * and lower thirds, with diagonals crossing through the bar.
+ */
+#define BT_ICON_W 9
+#define BT_ICON_H 15
+
+static const uint8_t bt_bitmap[BT_ICON_H][BT_ICON_W] = {
+    {0,0,0,1,1,0,0,0,0},
+    {0,0,0,1,1,1,0,0,0},
+    {0,0,0,1,1,1,1,0,0},
+    {0,0,0,1,1,0,1,1,0},
+    {1,1,0,1,1,0,0,1,1},
+    {0,1,1,1,1,0,1,1,0},
+    {0,0,1,1,1,1,1,0,0},
+    {0,0,0,1,1,1,0,0,0},
+    {0,0,1,1,1,1,1,0,0},
+    {0,1,1,1,1,0,1,1,0},
+    {1,1,0,1,1,0,0,1,1},
+    {0,0,0,1,1,0,1,1,0},
+    {0,0,0,1,1,1,1,0,0},
+    {0,0,0,1,1,1,0,0,0},
+    {0,0,0,1,1,0,0,0,0},
+};
+
+static void draw_bt_icon(int x, int y)
+{
+    /* Build the whole icon as one pixel block (transparent pixels become
+     * background). Two SPI bursts wouldn't help — we only redraw the icon
+     * on connect/disconnect, so a single-burst is fine and clean. */
+    static uint8_t cell[BT_ICON_W * BT_ICON_H * 2];
+    uint8_t fg_hi = COLOR_BT >> 8, fg_lo = COLOR_BT & 0xFF;
+    uint8_t bg_hi = COLOR_BG >> 8, bg_lo = COLOR_BG & 0xFF;
+
+    int idx = 0;
+    for (int row = 0; row < BT_ICON_H; row++) {
+        for (int col = 0; col < BT_ICON_W; col++) {
+            if (bt_bitmap[row][col]) {
+                cell[idx++] = fg_hi; cell[idx++] = fg_lo;
+            } else {
+                cell[idx++] = bg_hi; cell[idx++] = bg_lo;
+            }
+        }
+    }
+    tft_set_addr(x, y, BT_ICON_W, BT_ICON_H);
+    gpio_pin_set(gpio1, TFT_DC_PIN, 1);
+    gpio_pin_set(gpio1, TFT_CS_PIN, 0);
+    spi_bulk(cell, sizeof(cell));
+    gpio_pin_set(gpio1, TFT_CS_PIN, 1);
+}
+
+static void clear_bt_icon(int x, int y)
+{
+    fill_rect(x, y, BT_ICON_W, BT_ICON_H, COLOR_BG);
+}
+
+/* ================= BATTERY ICON ================= */
+/*
+ * Horizontal battery glyph rendered procedurally so the fill level
+ * can be set per-call.
+ *
+ *   28 px wide x 14 px tall (body 24x14, cap 4x6 sticking off right)
+ *
+ *   ########################....    (top edge)
+ *   #......................#....
+ *   #.######fillFFF........#....    fill area is 20w x 10h, x=2..21 y=2..11
+ *   #.######fillFFF........#####    cap top
+ *   #.######fillFFF............#
+ *   #.######fillFFF............#    cap interior
+ *   #.######fillFFF............#
+ *   #.######fillFFF............#
+ *   #.######fillFFF........#####    cap bottom
+ *   #.######fillFFF........#....
+ *   #.######fillFFF........#....
+ *   #......................#....
+ *   ########################....    (bottom edge)
+ *
+ * The full icon (outline + fill) is built into one buffer and pushed
+ * with a single SPI burst — same pattern as the BT icon. Cost: one
+ * draw per fill-level change, no per-pixel SPI overhead.
+ */
+
+#define BAT_ICON_W       28
+#define BAT_ICON_H       14
+#define BAT_BODY_W       24                 /* body x range: 0..23 */
+#define BAT_FILL_X0      2                  /* inclusive */
+#define BAT_FILL_X1      21                 /* inclusive — width 20 */
+#define BAT_FILL_Y0      2                  /* inclusive */
+#define BAT_FILL_Y1      11                 /* inclusive — height 10 */
+#define BAT_FILL_W       (BAT_FILL_X1 - BAT_FILL_X0 + 1)   /* 20 */
+#define BAT_CAP_TOP      4
+#define BAT_CAP_BOT      9                  /* inclusive */
+#define BAT_CAP_X1       (BAT_BODY_W + 4 - 1)              /* x=27 */
+
+#define BAT_BUF_BYTES    (BAT_ICON_W * BAT_ICON_H * 2)
+
+/* Compute fill width in pixels for a given percent (0..100). */
+static int bat_fill_pixels(uint8_t pct)
+{
+    if (pct >= 100) return BAT_FILL_W;
+    if (pct == 0)   return 0;
+    /* +50/100 = round-to-nearest in integer math */
+    int px = (BAT_FILL_W * (int)pct + 50) / 100;
+    if (px < 1) px = 1;        /* always show at least a sliver if >0% */
+    if (px > BAT_FILL_W) px = BAT_FILL_W;
+    return px;
+}
+
+/* Render the full battery icon at (x,y). `color` paints both the
+ * outline and the fill bar (we keep them the same color so the icon
+ * reads as one solid object — saves us from picking two colors that
+ * have to harmonize). */
+static void draw_battery_icon(int x, int y, uint8_t pct, uint16_t color)
+{
+    static uint8_t cell[BAT_BUF_BYTES];
+    uint8_t fg_hi = color >> 8, fg_lo = color & 0xFF;
+    uint8_t bg_hi = COLOR_BG >> 8, bg_lo = COLOR_BG & 0xFF;
+
+    int fill_px = bat_fill_pixels(pct);
+    int fill_x_end = BAT_FILL_X0 + fill_px;     /* exclusive */
+
+    int idx = 0;
+    for (int row = 0; row < BAT_ICON_H; row++) {
+        for (int col = 0; col < BAT_ICON_W; col++) {
+            bool on = false;
+
+            /* --- Body region (x = 0..BAT_BODY_W-1) --- */
+            if (col < BAT_BODY_W) {
+                /* Top / bottom outline */
+                if (row == 0 || row == BAT_ICON_H - 1) {
+                    on = true;
+                }
+                /* Left outline */
+                else if (col == 0) {
+                    on = true;
+                }
+                /* Right outline of body — except where cap connects */
+                else if (col == BAT_BODY_W - 1) {
+                    on = (row < BAT_CAP_TOP || row > BAT_CAP_BOT);
+                }
+                /* Fill bar */
+                else if (col >= BAT_FILL_X0 && col < fill_x_end &&
+                         row >= BAT_FILL_Y0 && row <= BAT_FILL_Y1) {
+                    on = true;
+                }
+            }
+            /* --- Cap region (x = BAT_BODY_W..BAT_CAP_X1) --- */
+            else if (row >= BAT_CAP_TOP && row <= BAT_CAP_BOT) {
+                /* Cap outline: top, bottom, right */
+                if (row == BAT_CAP_TOP || row == BAT_CAP_BOT) {
+                    on = true;
+                } else if (col == BAT_CAP_X1) {
+                    on = true;
+                }
+            }
+
+            if (on) { cell[idx++] = fg_hi; cell[idx++] = fg_lo; }
+            else    { cell[idx++] = bg_hi; cell[idx++] = bg_lo; }
+        }
+    }
+
+    tft_set_addr(x, y, BAT_ICON_W, BAT_ICON_H);
+    gpio_pin_set(gpio1, TFT_DC_PIN, 1);
+    gpio_pin_set(gpio1, TFT_CS_PIN, 0);
+    spi_bulk(cell, BAT_BUF_BYTES);
+    gpio_pin_set(gpio1, TFT_CS_PIN, 1);
+}
+
+/* ================= LIGHTNING BOLT ================= */
+/*
+ * 6x14 zap glyph drawn next to the battery icon while charging.
+ * Horizontally-stroked 2-pixel-wide design so it reads as solid.
+ */
+#define BOLT_W 6
+#define BOLT_H 14
+
+static const uint8_t bolt_bitmap[BOLT_H][BOLT_W] = {
+    {0,0,0,1,1,0},
+    {0,0,1,1,0,0},
+    {0,0,1,1,0,0},
+    {0,1,1,0,0,0},
+    {0,1,1,0,0,0},
+    {1,1,1,1,1,1},
+    {0,0,1,1,0,0},
+    {0,1,1,0,0,0},
+    {0,1,1,0,0,0},
+    {1,1,0,0,0,0},
+    {1,1,0,0,0,0},
+    {0,1,1,0,0,0},
+    {1,1,0,0,0,0},
+    {1,1,0,0,0,0},
+};
+
+static void draw_bolt_icon(int x, int y, uint16_t color)
+{
+    static uint8_t cell[BOLT_W * BOLT_H * 2];
+    uint8_t fg_hi = color >> 8, fg_lo = color & 0xFF;
+    uint8_t bg_hi = COLOR_BG >> 8, bg_lo = COLOR_BG & 0xFF;
+
+    int idx = 0;
+    for (int row = 0; row < BOLT_H; row++) {
+        for (int col = 0; col < BOLT_W; col++) {
+            if (bolt_bitmap[row][col]) {
+                cell[idx++] = fg_hi; cell[idx++] = fg_lo;
+            } else {
+                cell[idx++] = bg_hi; cell[idx++] = bg_lo;
+            }
+        }
+    }
+
+    tft_set_addr(x, y, BOLT_W, BOLT_H);
+    gpio_pin_set(gpio1, TFT_DC_PIN, 1);
+    gpio_pin_set(gpio1, TFT_CS_PIN, 0);
+    spi_bulk(cell, sizeof(cell));
+    gpio_pin_set(gpio1, TFT_CS_PIN, 1);
+}
+
+/* ================= BUZZER ================= */
+/*
+ * CMT-322-65-SMT-TR magnetic transducer.
+ *   Resonant frequency ~3.4 kHz (datasheet typical).
+ *   Driven with a square wave on BUZZER_PIN.
+ *
+ * We use a dedicated thread that sleeps on a semaphore. When something
+ * wants a beep it sets `buzzer_until_ms` and gives the semaphore;
+ * the thread wakes, bit-bangs the square wave with k_busy_wait until
+ * the deadline, then goes back to sleep. The main loop is never blocked.
+ *
+ * Triggering: temperature crossing UPWARD through 55 °C fires one beep.
+ * The warning re-arms only after temperature drops below 50 °C, so
+ * holding at 55 °C does NOT keep beeping.
+ */
+
+#define BUZZER_PIN              13
+#define BUZZER_FREQ_HZ          3400      /* CMT-322 nominal resonance */
+#define BUZZER_HALF_PERIOD_US   (1000000 / (2 * BUZZER_FREQ_HZ))   /* ~147 us */
+
+#define TEMP_WARN_HIGH_C        55
+#define TEMP_WARN_REARM_C       50        /* hysteresis */
+#define BUZZER_DURATION_MS      2500      /* "2 or 3 seconds" -> 2.5 s */
+
+#define BUZZER_THREAD_STACK     512
+#define BUZZER_THREAD_PRIO      7         /* below main, above idle */
+
+static K_SEM_DEFINE(buzzer_sem, 0, 1);
+static volatile int64_t buzzer_until_ms;  /* updated by main thread */
+
+static void buzzer_thread(void *a, void *b, void *c)
+{
+    ARG_UNUSED(a); ARG_UNUSED(b); ARG_UNUSED(c);
+
+    while (1) {
+        /* Sleep until someone asks for a beep. */
+        k_sem_take(&buzzer_sem, K_FOREVER);
+
+        /* Bit-bang square wave until the deadline. k_busy_wait blocks
+         * THIS thread but the higher-priority main thread preempts it
+         * freely. The audio stays clean enough at this frequency. */
+        while ((int64_t)k_uptime_get() < buzzer_until_ms) {
+            gpio_pin_set(gpio0, BUZZER_PIN, 1);
+            k_busy_wait(BUZZER_HALF_PERIOD_US);
+            gpio_pin_set(gpio0, BUZZER_PIN, 0);
+            k_busy_wait(BUZZER_HALF_PERIOD_US);
+        }
+        /* Make sure pin is left low so the buzzer doesn't sit at DC. */
+        gpio_pin_set(gpio0, BUZZER_PIN, 0);
+    }
+}
+
+K_THREAD_DEFINE(buzzer_tid, BUZZER_THREAD_STACK,
+                buzzer_thread, NULL, NULL, NULL,
+                BUZZER_THREAD_PRIO, 0, 0);
+
+/* Trigger a beep of `ms` milliseconds. Multiple calls just extend the
+ * end-time; they don't queue. Safe to call from main thread. */
+static void buzzer_beep(uint32_t ms)
+{
+    int64_t target = k_uptime_get() + ms;
+    if (target > buzzer_until_ms) {
+        buzzer_until_ms = target;
+    }
+    k_sem_give(&buzzer_sem);
+}
+
+/* ================= NTC ================= */
+
+#define R_FIXED 10000.0f
+#define R0      10000.0f
+#define BETA    3435.0f
+#define T0      298.15f
+#define V_SUPPLY 2.8f
+
+static float ntc_temp(float v)
+{
+    float r   = R_FIXED * ((V_SUPPLY / v) - 1);
+    float inv = (1.0f / T0) + (1.0f / BETA) * logf(r / R0);
+    return (1.0f / inv) - 273.15f;
+}
+
+/* ================= ADC FILTER ================= */
+
+static int32_t adc_window[FILTER_LEN];
+static int     adc_window_idx;
+static int     adc_window_count;
+static int32_t adc_window_sum;
+
+static void adc_filter_reset(void)
+{
+    memset(adc_window, 0, sizeof(adc_window));
+    adc_window_idx = 0;
+    adc_window_count = 0;
+    adc_window_sum = 0;
+}
+
+static float adc_filter_push(int32_t s)
+{
+    if (adc_window_count < FILTER_LEN) {
+        adc_window[adc_window_idx] = s;
+        adc_window_sum += s;
+        adc_window_idx = (adc_window_idx + 1) % FILTER_LEN;
+        adc_window_count++;
+        return (float)adc_window_sum / (float)adc_window_count;
+    }
+    adc_window_sum -= adc_window[adc_window_idx];
+    adc_window[adc_window_idx] = s;
+    adc_window_sum += s;
+    adc_window_idx = (adc_window_idx + 1) % FILTER_LEN;
+    return (float)adc_window_sum / (float)FILTER_LEN;
+}
+
+static int hysteresis_round(float temp_c, int last_int)
+{
+    if (last_int == INT_MIN) return (int)lroundf(temp_c);
+    float delta = temp_c - (float)last_int;
+    if (delta >=  (0.5f + HYSTERESIS_C))  return last_int + 1;
+    if (delta <= -(0.5f + HYSTERESIS_C))  return last_int - 1;
+    return last_int;
+}
+
+/* ================= I2C HELPERS ================= */
+
+static int i2c_reg_write8(uint8_t i2c_addr, uint8_t reg_a, uint8_t reg_b, uint8_t val)
+{
+    uint8_t buf[3] = { reg_a, reg_b, val };
+    return i2c_write(i2c_dev, buf, 3, i2c_addr);
+}
+
+static int i2c_reg_read8(uint8_t i2c_addr, uint8_t reg_a, uint8_t reg_b, uint8_t *val)
+{
+    uint8_t addr[2] = { reg_a, reg_b };
+    return i2c_write_read(i2c_dev, i2c_addr, addr, 2, val, 1);
+}
+
+/* ================= BMI323 DRIVER ================= */
+
+static int bmi323_read_reg16(uint8_t reg, uint16_t *out)
+{
+    uint8_t rx[4];
+    int ret = i2c_write_read(i2c_dev, BMI323_ADDR, &reg, 1, rx, 4);
+    if (ret < 0) return ret;
+    *out = (uint16_t)(rx[2] | ((uint16_t)rx[3] << 8));
+    return 0;
+}
+
+static int bmi323_write_reg16(uint8_t reg, uint16_t val)
+{
+    uint8_t tx[3] = { reg, (uint8_t)(val & 0xFF), (uint8_t)(val >> 8) };
+    return i2c_write(i2c_dev, tx, 3, BMI323_ADDR);
+}
+
+static int bmi323_read_burst(uint8_t reg, int16_t *buf, uint8_t count)
+{
+    uint8_t rx[2 + 12];
+    uint8_t n = 2 + (count * 2);
+    if (n > sizeof(rx)) return -EINVAL;
+    int ret = i2c_write_read(i2c_dev, BMI323_ADDR, &reg, 1, rx, n);
+    if (ret < 0) return ret;
+    for (int i = 0; i < count; i++) {
+        buf[i] = (int16_t)(rx[2 + i * 2] | ((uint16_t)rx[2 + i * 2 + 1] << 8));
+    }
+    return 0;
+}
+
+static int bmi323_init(void)
+{
+    int ret;
+    uint16_t chip_id_reg;
+
+    if (!device_is_ready(i2c_dev)) {
+        LOG_ERR("I2C0 not ready");
+        return -ENODEV;
+    }
+    k_msleep(5);
+
+    ret = bmi323_write_reg16(BMI323_REG_CMD, BMI323_CMD_SOFT_RESET);
+    if (ret < 0) return ret;
+    k_msleep(2);
+
+    ret = bmi323_read_reg16(BMI323_REG_CHIP_ID, &chip_id_reg);
+    if (ret < 0) return ret;
+
+    uint8_t chip_id = (uint8_t)(chip_id_reg & 0xFF);
+    if (chip_id != BMI323_CHIP_ID) {
+        LOG_ERR("BMI323 wrong chip ID 0x%02X", chip_id);
+        return -ENODEV;
+    }
+    LOG_INF("BMI323 chip ID OK (0x%02X)", chip_id);
+
+    ret = bmi323_write_reg16(BMI323_REG_ACC_CONF, BMI323_ACC_CONF_VAL);
+    if (ret < 0) return ret;
+    k_msleep(5);
+
+    ret = bmi323_write_reg16(BMI323_REG_GYR_CONF, BMI323_GYR_CONF_VAL);
+    if (ret < 0) return ret;
+    k_msleep(50);
+
+    return 0;
+}
+
+/* ================= nPM1304 ================= */
+
+/* Error / diagnostic registers (offsets within CHG base) */
+#define NPM_REG_BCHGERRREASON   0x36
+#define NPM_REG_BCHGERRSENSOR   0x37
+#define NPM_REG_TASKCLEARCHGERR 0x35  /* W: bit0=1 clears error state */
+#define NPM_REG_TASKRELEASEERR  0x37  /* lives in CHG base too */
+
+static int npm_init(void)
+{
+    int ret = 0;
+
+    /* ---- Step 1: VBUS input current limit ---- */
+    /* Default is 100 mA; with that, charge current would be clamped to
+     * ~80 mA regardless of BCHGISET. Raise to 500 mA. */
+    ret |= i2c_reg_write8(NPM_ADDR, NPM_BASE_VBUS, NPM_REG_VBUSINILIM0, 0x00);
+    ret |= i2c_reg_write8(NPM_ADDR, NPM_BASE_VBUS, NPM_REG_TASKUPDATEILIM, 0x01);
+
+    /* ---- Step 2: NTC ADC pull-up off ---- */
+    /* ADCNTCRSEL = 0 turns off the internal pull-up so we don't try to
+     * read a thermistor that isn't there. Charger NTC limits are
+     * disabled separately in step 4. */
+    ret |= i2c_reg_write8(NPM_ADDR, NPM_BASE_ADC, NPM_REG_ADCNTCRSEL, 0x00);
+
+    /* ---- Step 3: Disable charger BEFORE changing settings ---- */
+    /* Datasheet: BCHGISET / VTERM / NTC-ignore must be configured
+     * with the charger DISABLED, then re-enabled to apply. Per Nordic
+     * DevZone (https://devzone.nordicsemi.com/.../127167) confirming
+     * this exact sequence for the nPM1304. */
+    ret |= i2c_reg_write8(NPM_ADDR, NPM_BASE_CHG, NPM_REG_BCHGENABLECLR, 0x01);
+
+    /* Brief wait for the FSM to actually disable. Datasheet doesn't
+     * specify a min, but this matches what Nordic's own driver does. */
+    k_msleep(2);
+
+    /* ---- Step 4: IGNORE_NTC bit (CRITICAL for boards without NTC) ---- */
+    /* BCHGDISABLESET bit1 = 1 -> charger ignores NTC temperature limits.
+     *
+     * IMPORTANT: Even with this bit set, the NTC PIN must be tied to
+     * GND (or via a resistor) on the PCB. If the NTC pin floats,
+     * charging will NOT start regardless of this register. See the
+     * datasheet quote: "If a thermistor is not used, the NTC pin
+     * must be tied directly to ground or through a resistor."
+     *
+     * The Zephyr npm1300 driver was historically missing this write,
+     * which is the documented fix for this exact symptom. */
+    ret |= i2c_reg_write8(NPM_ADDR, NPM_BASE_CHG, NPM_REG_BCHGDISABLESET, 0x02);
+
+    /* ---- Step 5: Charge current = 100 mA ---- */
+    /* 9-bit value split across MSB (8 bits) and LSB (1 bit).
+     * code = mA / 2  ->  100 mA -> MSB=50, LSB=0 */
+    ret |= i2c_reg_write8(NPM_ADDR, NPM_BASE_CHG, NPM_REG_BCHGISETMSB,
+                          NPM_CHG_CURRENT_MA / 2);
+    ret |= i2c_reg_write8(NPM_ADDR, NPM_BASE_CHG, NPM_REG_BCHGISETLSB,
+                          NPM_CHG_CURRENT_MA & 0x01);
+
+    /* ---- Step 6: Termination voltage = 4.20 V (normal AND warm) ---- */
+    ret |= i2c_reg_write8(NPM_ADDR, NPM_BASE_CHG, NPM_REG_BCHGVTERM,  NPM_VTERM_4V20);
+    ret |= i2c_reg_write8(NPM_ADDR, NPM_BASE_CHG, NPM_REG_BCHGVTERMR, NPM_VTERM_4V20);
+
+    /* ---- Step 7: Clear any latched error state from previous boots ---- */
+    /* If the charger faulted before (e.g. NTC out of range when there
+     * was no NTC at all), the error is latched and TASKCLEARCHGERR
+     * must be set before the charger will start. */
+    i2c_reg_write8(NPM_ADDR, NPM_BASE_CHG, NPM_REG_TASKCLEARCHGERR, 0x01);
+
+    /* ---- Step 8: ENABLE charger (latches all of the above) ---- */
+    ret |= i2c_reg_write8(NPM_ADDR, NPM_BASE_CHG, NPM_REG_BCHGENABLESET, 0x01);
+
+    if (ret) {
+        LOG_ERR("nPM1304 init: I2C error");
+        return -EIO;
+    }
+
+    /* ---- Step 9: Diagnostics ---- */
+    /* Give the charger ~50 ms to evaluate VBUS / battery / NTC and
+     * settle into a state, then dump it so we can see what's wrong. */
+    k_msleep(50);
+
+    uint8_t chg_stat = 0, err_reason = 0, err_sensor = 0, vbus_stat = 0;
+    i2c_reg_read8(NPM_ADDR, NPM_BASE_VBUS, NPM_REG_VBUSINSTATUS,    &vbus_stat);
+    i2c_reg_read8(NPM_ADDR, NPM_BASE_CHG,  NPM_REG_BCHGCHARGESTATUS, &chg_stat);
+    i2c_reg_read8(NPM_ADDR, NPM_BASE_CHG,  NPM_REG_BCHGERRREASON,    &err_reason);
+    i2c_reg_read8(NPM_ADDR, NPM_BASE_CHG,  NPM_REG_BCHGERRSENSOR,    &err_sensor);
+
+    LOG_INF("nPM1304 configured:");
+    LOG_INF("  ICHG=100mA  VTERM=4.20V  NTC=ignored  ILIM=500mA");
+    LOG_INF("  VBUSINSTATUS    = 0x%02X  (USB %s)",
+            vbus_stat, (vbus_stat & 0x01) ? "PRESENT" : "absent");
+    LOG_INF("  BCHGCHARGESTATUS= 0x%02X  battdet=%d trickle=%d cc=%d cv=%d done=%d",
+            chg_stat,
+            !!(chg_stat & NPM_CHGSTAT_BATTDET),
+            !!(chg_stat & NPM_CHGSTAT_TRICKLE),
+            !!(chg_stat & NPM_CHGSTAT_CC),
+            !!(chg_stat & NPM_CHGSTAT_CV),
+            !!(chg_stat & NPM_CHGSTAT_COMPLETE));
+    LOG_INF("  BCHGERRREASON   = 0x%02X", err_reason);
+    LOG_INF("  BCHGERRSENSOR   = 0x%02X", err_sensor);
+
+    if (vbus_stat & 0x01) {
+        if (chg_stat == 0) {
+            /* USB present but charger says nothing — strong indicator
+             * the NTC pin isn't physically tied to GND on this board. */
+            LOG_WRN("USB connected but charger inactive.");
+            LOG_WRN("Likely cause: NTC pin floating on the PCB.");
+            LOG_WRN("Tie the PMIC NTC pin to GND (direct or via 10k).");
+        } else if (!(chg_stat & NPM_CHGSTAT_BATTDET)) {
+            LOG_WRN("USB present but no battery detected on VBAT.");
+        }
+    }
+
+    return 0;
+}
+
+/* Trigger a VBAT measurement and read mV. Returns 0 on error. */
+static uint16_t npm_read_vbat_mv(void)
+{
+    if (i2c_reg_write8(NPM_ADDR, NPM_BASE_ADC, NPM_REG_TASKVBATMEAS, 0x01) < 0)
+        return 0;
+    k_msleep(10);
+
+    uint8_t msb = 0, lsbs = 0;
+    if (i2c_reg_read8(NPM_ADDR, NPM_BASE_ADC, NPM_REG_ADCVBATMSB,  &msb)  < 0) return 0;
+    if (i2c_reg_read8(NPM_ADDR, NPM_BASE_ADC, NPM_REG_ADCGP0LSBS,  &lsbs) < 0) return 0;
+
+    uint16_t raw = ((uint16_t)msb << 2) | (lsbs & 0x03);
+    uint32_t mv = ((uint32_t)raw * 5000U) / 1023U;
+    if (mv > 65535U) mv = 65535U;
+    return (uint16_t)mv;
+}
+
+/* Convert millivolts to percent using a piecewise-linear curve.
+ *
+ * No state-aware bias is applied here — the curve operates on the raw
+ * measured voltage. The percent will naturally drift a bit when the
+ * load changes (e.g. USB plug-in causes a small upward step). That's
+ * smoothed cosmetically by the slew limiter in the main loop, not by
+ * fudging the math here.
+ */
+static uint8_t npm_battery_percent(uint16_t mv)
+{
+    float v = mv / 1000.0f;
+    float p;
+    if      (v >= 4.20f) p = 100.0f;
+    else if (v >= 4.00f) p = 80.0f + (v - 4.00f) * (20.0f / 0.20f);
+    else if (v >= 3.85f) p = 60.0f + (v - 3.85f) * (20.0f / 0.15f);
+    else if (v >= 3.70f) p = 40.0f + (v - 3.70f) * (20.0f / 0.15f);
+    else if (v >= 3.60f) p = 20.0f + (v - 3.60f) * (20.0f / 0.10f);
+    else if (v >= 3.50f) p = 10.0f + (v - 3.50f) * (10.0f / 0.10f);
+    else if (v >= 3.30f) p =  0.0f + (v - 3.30f) * (10.0f / 0.20f);
+    else                 p =  0.0f;
+    if (p < 0)   p = 0;
+    if (p > 100) p = 100;
+    return (uint8_t)(p + 0.5f);
+}
+
+/* ================= BLE ================= */
+
+/* Connection parameter values requested from the central after connect.
+ * Default BLE intervals are very fast (7.5-15 ms). With a slower
+ * interval, both the spoon and the phone wake the radio less often,
+ * which saves real power on both sides.
+ *
+ * Units (per BT spec):
+ *   interval:  N * 1.25 ms   (range 6..3200 -> 7.5 ms .. 4 s)
+ *   latency:   integer       (skip this many connection events if no data)
+ *   timeout:   N * 10 ms     (supervision timeout)
+ *
+ * 80..160 -> 100..200 ms connection interval. Fits our IMU broadcast
+ * cadence (every ~250 ms) comfortably; even at the 200 ms upper bound
+ * each notification gets through within one interval.
+ *
+ * timeout = 400 -> 4 s. Enough margin to ride out brief RF drop-outs
+ * without disconnecting (default is 720 ms which is too aggressive). */
+#define CONN_INTERVAL_MIN  80      /* 100 ms */
+#define CONN_INTERVAL_MAX  160     /* 200 ms */
+#define CONN_LATENCY       0
+#define CONN_TIMEOUT       400     /* 4 s */
+
+#define BC_UUID_SVC_VAL \
+    BT_UUID_128_ENCODE(0xf00d0001, 0x1234, 0x5678, 0x9abc, 0xdef012345678)
+#define BC_UUID_TX_VAL  \
+    BT_UUID_128_ENCODE(0xf00d0002, 0x1234, 0x5678, 0x9abc, 0xdef012345678)
+
+static struct bt_uuid_128 bc_uuid_svc = BT_UUID_INIT_128(BC_UUID_SVC_VAL);
+static struct bt_uuid_128 bc_uuid_tx  = BT_UUID_INIT_128(BC_UUID_TX_VAL);
+
+static struct bt_conn *current_conn;
+static atomic_t notify_enabled = ATOMIC_INIT(0);
+static atomic_t bt_connected   = ATOMIC_INIT(0);  /* read by main loop */
+static bool     advertising;
+
+static void bc_ccc_changed(const struct bt_gatt_attr *attr, uint16_t value)
+{
+    atomic_set(&notify_enabled, value == BT_GATT_CCC_NOTIFY ? 1 : 0);
+    LOG_INF("Notifications %s",
+            (value == BT_GATT_CCC_NOTIFY) ? "enabled" : "disabled");
+}
+
+BT_GATT_SERVICE_DEFINE(bc_svc,
+    BT_GATT_PRIMARY_SERVICE(&bc_uuid_svc),
+    BT_GATT_CHARACTERISTIC(&bc_uuid_tx.uuid,
+                           BT_GATT_CHRC_NOTIFY,
+                           BT_GATT_PERM_NONE,
+                           NULL, NULL, NULL),
+    BT_GATT_CCC(bc_ccc_changed,
+                BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
+);
+
+#define BC_TX_ATTR_INDEX 2
+
+/* Advertising data:
+ *   AD packet: FLAGS + 128-bit service UUID  (21 bytes total)
+ *   SD packet: complete device name           (8 bytes for "iSpoon")
+ *
+ * The service UUID in the AD packet is what lets phone apps register
+ * a system-level scan filter on this specific UUID. With that filter,
+ * Android's BluetoothLeScanner.startScan(PendingIntent) and iOS's
+ * Core Bluetooth State Restoration can wake the app when our spoon
+ * comes into range — even if the app process was killed.
+ *
+ * The device name lives in the scan response so we don't pressure the
+ * 31-byte AD limit; centrals fetch the SD automatically after seeing
+ * the AD. Users still see "iSpoon" in their Bluetooth list. */
+static const struct bt_data ad[] = {
+    BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
+    BT_DATA_BYTES(BT_DATA_UUID128_ALL, BC_UUID_SVC_VAL),
+};
+
+static const struct bt_data sd[] = {
+    BT_DATA(BT_DATA_NAME_COMPLETE, CONFIG_BT_DEVICE_NAME,
+            sizeof(CONFIG_BT_DEVICE_NAME) - 1),
+};
+
+/* Advertising parameters. We removed BT_LE_ADV_OPT_USE_NAME (which
+ * would auto-build the AD packet for us) because we now build the AD
+ * manually so we can include the service UUID. */
+static const struct bt_le_adv_param bc_adv_params = {
+    .options      = BT_LE_ADV_OPT_CONNECTABLE,
+    .interval_min = BT_GAP_ADV_FAST_INT_MIN_2,
+    .interval_max = BT_GAP_ADV_FAST_INT_MAX_2,
+};
+
+static bool device_is_on(void);
+
+static void conn_param_update_handler(struct k_work *work);
+
+static K_WORK_DELAYABLE_DEFINE(conn_param_update_work, conn_param_update_handler);
+
+static void conn_param_update_handler(struct k_work *work)
+{
+    if (!atomic_get(&bt_connected) || !current_conn) {
+        return;
+    }
+
+    struct bt_le_conn_param param = {
+        .interval_min = CONN_INTERVAL_MIN,
+        .interval_max = CONN_INTERVAL_MAX,
+        .latency      = CONN_LATENCY,
+        .timeout      = CONN_TIMEOUT,
+    };
+
+    int upd = bt_conn_le_param_update(current_conn, &param);
+    if (upd) {
+        LOG_DBG("conn param update returned %d (non-fatal)", upd);
+    } else {
+        LOG_INF("BLE connection parameters update requested");
+    }
+}
+
+static void connected(struct bt_conn *conn, uint8_t err)
+{
+    if (err) {
+        LOG_ERR("BLE connection failed (%u)", err);
+        return;
+    }
+    current_conn = bt_conn_ref(conn);
+    atomic_set(&bt_connected, 1);
+    LOG_INF("BLE connected");
+
+    /* Request slower connection interval after 5 seconds to save power,
+     * allowing the central to complete service discovery/MTU exchange first. */
+    k_work_schedule(&conn_param_update_work, K_MSEC(5000));
+}
+
+static void disconnected(struct bt_conn *conn, uint8_t reason)
+{
+    LOG_INF("BLE disconnected (reason %u)", reason);
+    k_work_cancel_delayable(&conn_param_update_work);
+    atomic_set(&notify_enabled, 0);
+    atomic_set(&bt_connected, 0);
+    if (current_conn) {
+        bt_conn_unref(current_conn);
+        current_conn = NULL;
+    }
+    if (device_is_on() && !advertising) {
+        int err = bt_le_adv_start(&bc_adv_params,
+                                  ad, ARRAY_SIZE(ad),
+                                  sd, ARRAY_SIZE(sd));
+        if (err == 0) advertising = true;
+        else LOG_ERR("Adv restart failed (%d)", err);
+    }
+}
+
+BT_CONN_CB_DEFINE(conn_callbacks) = {
+    .connected    = connected,
+    .disconnected = disconnected,
+};
+
+static int ble_setup(void)
+{
+    int err = bt_enable(NULL);
+    if (err) { LOG_ERR("bt_enable failed (%d)", err); return err; }
+    return 0;
+}
+
+static void ble_start_advertising(void)
+{
+    if (advertising) return;
+    int err = bt_le_adv_start(&bc_adv_params,
+                              ad, ARRAY_SIZE(ad),
+                              sd, ARRAY_SIZE(sd));
+    if (err) { LOG_ERR("bt_le_adv_start failed (%d)", err); return; }
+    advertising = true;
+    LOG_INF("BLE advertising as '%s'", CONFIG_BT_DEVICE_NAME);
+}
+
+static void ble_stop_advertising_and_disconnect(void)
+{
+    if (advertising) {
+        int err = bt_le_adv_stop();
+        if (err) LOG_WRN("adv stop err %d", err);
+        advertising = false;
+    }
+    if (current_conn) {
+        bt_conn_disconnect(current_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+    }
+}
+
+/* ================= BINARY PACKET PROTOCOL ================= */
+
+#define PKT_TYPE_IMU    0x01
+#define PKT_TYPE_STATE  0x02
+#define PKT_TYPE_BITE   0x03
+#define PKT_TYPE_RECAL  0x04
+#define PKT_TYPE_INFO   0x05
+#define PKT_TYPE_BATT   0x06
+#define PKT_TYPE_TEMP   0x07     /* int8 Celsius */
+
+#define INFO_POWER_ON       0x06
+#define INFO_POWER_OFF      0x07
+#define INFO_IMU_READ_ERR   0x04
+
+static uint16_t pkt_seq;
+
+static void ble_send_pkt(uint8_t type, const void *payload, size_t plen)
+{
+    if (!current_conn || !atomic_get(&notify_enabled)) return;
+    if (plen > 64) return;
+
+    uint8_t buf[7 + 64];
+    uint32_t ts = k_uptime_get_32();
+    buf[0] = type;
+    buf[1] = pkt_seq;       buf[2] = pkt_seq >> 8;
+    buf[3] = ts;            buf[4] = ts >> 8;
+    buf[5] = ts >> 16;      buf[6] = ts >> 24;
+    if (plen) memcpy(&buf[7], payload, plen);
+    pkt_seq++;
+
+    size_t total = 7 + plen;
+    int err = bt_gatt_notify(current_conn, &bc_svc.attrs[BC_TX_ATTR_INDEX],
+                             buf, total);
+    if (err == -EAGAIN || err == -ENOMEM) {
+        k_msleep(2);
+        bt_gatt_notify(current_conn, &bc_svc.attrs[BC_TX_ATTR_INDEX],
+                       buf, total);
+    }
+}
+
+static void send_imu(int16_t ax,int16_t ay,int16_t az,int16_t gx,int16_t gy,int16_t gz)
+{
+    uint8_t p[12];
+    p[0]=ax;  p[1]=ax>>8;  p[2]=ay;  p[3]=ay>>8;
+    p[4]=az;  p[5]=az>>8;  p[6]=gx;  p[7]=gx>>8;
+    p[8]=gy;  p[9]=gy>>8;  p[10]=gz; p[11]=gz>>8;
+    ble_send_pkt(PKT_TYPE_IMU, p, sizeof(p));
+}
+
+static void send_state(uint8_t state_id)
+{
+    ble_send_pkt(PKT_TYPE_STATE, &state_id, 1);
+}
+
+static void send_bite(uint16_t count, float rotX, float rotY, float rotZ)
+{
+    int16_t rx = (int16_t)(rotX * 10.0f);
+    int16_t ry = (int16_t)(rotY * 10.0f);
+    int16_t rz = (int16_t)(rotZ * 10.0f);
+    uint8_t p[8];
+    p[0]=count; p[1]=count>>8;
+    p[2]=rx;    p[3]=rx>>8;
+    p[4]=ry;    p[5]=ry>>8;
+    p[6]=rz;    p[7]=rz>>8;
+    ble_send_pkt(PKT_TYPE_BITE, p, sizeof(p));
+}
+
+static void send_recal(float baseline)
+{
+    union { float f; uint32_t u; } cv; cv.f = baseline;
+    uint8_t p[4] = { cv.u, cv.u>>8, cv.u>>16, cv.u>>24 };
+    ble_send_pkt(PKT_TYPE_RECAL, p, sizeof(p));
+}
+
+static void send_info(uint8_t code) { ble_send_pkt(PKT_TYPE_INFO, &code, 1); }
+
+static void send_batt(uint16_t mv, uint8_t pct, uint8_t flags)
+{
+    uint8_t p[5];
+    p[0]=mv; p[1]=mv>>8; p[2]=pct; p[3]=flags; p[4]=0;
+    ble_send_pkt(PKT_TYPE_BATT, p, 4);
+}
+
+static void send_temp(int t_c)
+{
+    /* Single int8 in payload — covers -128..+127 °C, plenty of range. */
+    int8_t v = (int8_t)t_c;
+    if (t_c >  127) v =  127;
+    if (t_c < -128) v = -128;
+    ble_send_pkt(PKT_TYPE_TEMP, &v, 1);
+}
+
+/* ================= BITE-COUNTER STATE MACHINE ================= */
+
+enum BiteState {
+    IDLE, PRE_LIFT_VALIDATION, LIFTING, APPROACHING_MOUTH,
+    DWELLING, RETURNING, BITE_COMPLETE
+};
+enum SystemState { WAITING_FOR_MOTION, CALIBRATING, RUNNING };
+
+static const float MOTION_DETECTION_THRESHOLD = 0.1f;
+static const float GYRO_MOTION_THRESHOLD      = 10.0f;
+static const float IDLE_ACCEL_THRESHOLD       = 0.2f;
+static const float SUSTAINED_LIFT_THRESHOLD   = 0.15f;
+static const float LIFT_CONFIRMATION_THRESHOLD= 0.3f;
+static const float DECEL_THRESHOLD            = 0.1f;
+static const float GYRO_ROTATION_THRESHOLD    = 60.0f;
+static const float DWELL_GYRO_REVERSAL        = 50.0f;
+
+static const uint32_t PRE_LIFT_VALIDATION_TIME = 200;
+static const uint32_t MIN_DWELL_TIME           = 400;
+static const uint32_t MIN_LIFT_TIME            = 150;
+static const uint32_t IDLE_SETTLE_TIME         = 500;
+static const uint32_t IDLE_RECALIB_TIME        = 1000;
+static const int BASELINE_SAMPLES              = 20;
+static const int RECALIB_SAMPLE_TARGET         = 20;
+static const int REQUIRED_SUSTAINED_SAMPLES    = 2;
+
+typedef struct {
+    bool active;
+    enum SystemState systemState;
+    enum BiteState   currentState;
+    uint32_t stateStartTime;
+    int      biteCount;
+    float    prevAccelZ;
+    uint32_t lastBiteCompleteTime;
+    float maxAccelInPreLift;
+    int   sustainedLiftSamples;
+    float maxGyroInDwell;
+    float minGyroInDwell;
+    bool  gyroReversalDetected;
+    float baselineAccelZ;
+    int   baselineSampleCount;
+    float initialAx, initialAy, initialAz;
+    float initialGx, initialGy, initialGz;
+    bool  initialReadingTaken;
+    float gyroAngleX, gyroAngleY, gyroAngleZ;
+    bool  trackingBiteRotation;
+    uint32_t lastGyroTime;
+    uint32_t next_motion_check_ms;
+    uint32_t next_calib_sample_ms;
+    uint32_t idleStartTime;
+    bool     idleTimerRunning;
+    float    recalibSum;
+    int      recalibSamples;
+    int      bcast_div;
+} bite_t;
+
+static bite_t bite;
+
+static void bite_reset(void)
+{
+    memset(&bite, 0, sizeof(bite));
+    bite.systemState     = WAITING_FOR_MOTION;
+    bite.currentState    = IDLE;
+    bite.stateStartTime  = k_uptime_get_32();
+    bite.lastGyroTime    = bite.stateStartTime;
+}
+
+static void bite_step(int16_t raw_ax, int16_t raw_ay, int16_t raw_az,
+                      int16_t raw_gx, int16_t raw_gy, int16_t raw_gz)
+{
+    float ax = raw_ax / ACC_LSB_PER_G;
+    float ay = raw_ay / ACC_LSB_PER_G;
+    float az = raw_az / ACC_LSB_PER_G;
+    float gx = raw_gx / GYR_LSB_PER_DPS;
+    float gy = raw_gy / GYR_LSB_PER_DPS;
+    float gz = raw_gz / GYR_LSB_PER_DPS;
+
+    uint32_t currentTime = k_uptime_get_32();
+    uint32_t timeInState = currentTime - bite.stateStartTime;
+
+    float dt = (currentTime - bite.lastGyroTime) / 1000.0f;
+    bite.lastGyroTime = currentTime;
+    if (bite.trackingBiteRotation) {
+        bite.gyroAngleX += gx * dt;
+        bite.gyroAngleY += gy * dt;
+        bite.gyroAngleZ += gz * dt;
+    }
+
+    if (++bite.bcast_div >= 5) {
+        bite.bcast_div = 0;
+        send_imu(raw_ax, raw_ay, raw_az, raw_gx, raw_gy, raw_gz);
+    }
+
+    if (bite.systemState == WAITING_FOR_MOTION) {
+        if (currentTime < bite.next_motion_check_ms) return;
+        bite.next_motion_check_ms = currentTime + 100;
+
+        if (!bite.initialReadingTaken) {
+            bite.initialAx=ax; bite.initialAy=ay; bite.initialAz=az;
+            bite.initialGx=gx; bite.initialGy=gy; bite.initialGz=gz;
+            bite.initialReadingTaken = true;
+            return;
+        }
+
+        float dax=ax-bite.initialAx, day=ay-bite.initialAy, daz=az-bite.initialAz;
+        float dgx=gx-bite.initialGx, dgy=gy-bite.initialGy, dgz=gz-bite.initialGz;
+        float ach = sqrtf(dax*dax+day*day+daz*daz);
+        float gch = sqrtf(dgx*dgx+dgy*dgy+dgz*dgz);
+
+        if (ach > MOTION_DETECTION_THRESHOLD || gch > GYRO_MOTION_THRESHOLD) {
+            send_state(0x81);
+            bite.systemState = CALIBRATING;
+            bite.baselineSampleCount = 0;
+            bite.baselineAccelZ = 0.0f;
+            bite.next_calib_sample_ms = currentTime + 500;
+            return;
+        }
+        bite.initialAx=ax; bite.initialAy=ay; bite.initialAz=az;
+        bite.initialGx=gx; bite.initialGy=gy; bite.initialGz=gz;
+        return;
+    }
+
+    if (bite.systemState == CALIBRATING) {
+        if (currentTime < bite.next_calib_sample_ms) return;
+        if (bite.baselineSampleCount < BASELINE_SAMPLES) {
+            bite.baselineAccelZ += az;
+            bite.baselineSampleCount++;
+            bite.next_calib_sample_ms = currentTime + 50;
+            return;
+        }
+        bite.baselineAccelZ /= BASELINE_SAMPLES;
+        bite.systemState    = RUNNING;
+        bite.stateStartTime = currentTime;
+        send_state(0x82);
+        send_recal(bite.baselineAccelZ);
+        return;
+    }
+
+    /* RUNNING */
+    float verticalAccel = az - bite.baselineAccelZ;
+    float totalGyro     = sqrtf(gx*gx + gy*gy + gz*gz);
+    float accelChange   = verticalAccel - bite.prevAccelZ;
+
+    enum BiteState prev = bite.currentState;
+
+    switch (bite.currentState) {
+    case IDLE:
+        bite.sustainedLiftSamples = 0;
+        bite.maxAccelInPreLift = 0.0f;
+        if (!bite.idleTimerRunning) {
+            bite.idleStartTime = currentTime;
+            bite.idleTimerRunning = true;
+            bite.recalibSum = 0; bite.recalibSamples = 0;
+        }
+        if ((currentTime - bite.idleStartTime) > IDLE_RECALIB_TIME) {
+            bite.recalibSum += az; bite.recalibSamples++;
+            if (bite.recalibSamples >= RECALIB_SAMPLE_TARGET) {
+                bite.baselineAccelZ = bite.recalibSum / bite.recalibSamples;
+                send_recal(bite.baselineAccelZ);
+                bite.recalibSamples = 0; bite.recalibSum = 0;
+                bite.idleStartTime = currentTime;
+            }
+        }
+        if (verticalAccel > IDLE_ACCEL_THRESHOLD &&
+            accelChange > 0.05f &&
+            (currentTime - bite.lastBiteCompleteTime) > IDLE_SETTLE_TIME) {
+            bite.gyroAngleX=0; bite.gyroAngleY=0; bite.gyroAngleZ=0;
+            bite.trackingBiteRotation = true;
+            bite.idleTimerRunning = false;
+            bite.currentState = PRE_LIFT_VALIDATION;
+            bite.stateStartTime = currentTime;
+        }
+        break;
+
+    case PRE_LIFT_VALIDATION:
+        if (verticalAccel > bite.maxAccelInPreLift) bite.maxAccelInPreLift = verticalAccel;
+        if (verticalAccel > SUSTAINED_LIFT_THRESHOLD) bite.sustainedLiftSamples++;
+        if (bite.sustainedLiftSamples >= REQUIRED_SUSTAINED_SAMPLES &&
+            bite.maxAccelInPreLift > LIFT_CONFIRMATION_THRESHOLD) {
+            bite.currentState = LIFTING;
+            bite.stateStartTime = currentTime;
+        }
+        if (verticalAccel < 0.0f || timeInState > PRE_LIFT_VALIDATION_TIME) {
+            bite.currentState = IDLE;
+        }
+        break;
+
+    case LIFTING:
+        if (timeInState > MIN_LIFT_TIME &&
+            (fabsf(verticalAccel) < DECEL_THRESHOLD || accelChange < -0.05f)) {
+            bite.currentState = APPROACHING_MOUTH;
+            bite.stateStartTime = currentTime;
+        }
+        break;
+
+    case APPROACHING_MOUTH:
+        if (fabsf(gy) > GYRO_ROTATION_THRESHOLD ||
+            fabsf(gx) > GYRO_ROTATION_THRESHOLD) {
+            bite.currentState = DWELLING;
+            bite.stateStartTime = currentTime;
+            bite.maxGyroInDwell = gy;
+            bite.minGyroInDwell = gy;
+            bite.gyroReversalDetected = false;
+        }
+        break;
+
+    case DWELLING:
+        if (gy > bite.maxGyroInDwell) bite.maxGyroInDwell = gy;
+        if (gy < bite.minGyroInDwell) bite.minGyroInDwell = gy;
+        if ((bite.maxGyroInDwell - bite.minGyroInDwell) > DWELL_GYRO_REVERSAL) {
+            bite.gyroReversalDetected = true;
+        }
+        if (bite.gyroReversalDetected && totalGyro < GYRO_ROTATION_THRESHOLD &&
+            timeInState > MIN_DWELL_TIME) {
+            bite.currentState = RETURNING;
+            bite.stateStartTime = currentTime;
+        }
+        break;
+
+    case RETURNING:
+        if (verticalAccel < -LIFT_CONFIRMATION_THRESHOLD && accelChange < -0.05f) {
+            bite.currentState = BITE_COMPLETE;
+            bite.stateStartTime = currentTime;
+        }
+        if (timeInState > 2500) {
+            bite.currentState = IDLE;
+            bite.lastBiteCompleteTime = currentTime;
+            bite.trackingBiteRotation = false;
+        }
+        break;
+
+    case BITE_COMPLETE:
+        if ((fabsf(verticalAccel) < DECEL_THRESHOLD && timeInState > 200) ||
+            timeInState > 1500) {
+            bite.biteCount++;
+            send_bite((uint16_t)bite.biteCount,
+                      bite.gyroAngleX, bite.gyroAngleY, bite.gyroAngleZ);
+            bite.trackingBiteRotation = false;
+            bite.currentState = IDLE;
+            bite.lastBiteCompleteTime = currentTime;
+        }
+        break;
+    }
+
+    if (bite.currentState != prev) {
+        send_state((uint8_t)bite.currentState);
+    }
+    bite.prevAccelZ = verticalAccel;
+}
+
+/* ================= STATUS BAR ================= */
+/*
+ * Layout (top of visible 160x80 area):
+ *
+ *  +--------------------------------------------------+
+ *  | [BT]                          [BOLT][BATTERY]    |   y=0..14
+ *  |                                                  |   gap
+ *  |                  TEMP                            |   y=22..42  header
+ *  |                                                  |   gap
+ *  |                  25 oC                           |   y=52..72  value
+ *  +--------------------------------------------------+
+ *
+ *  - BT icon: top-left corner, fixed position. Shown while connected.
+ *  - Battery icon (28x14): top-right corner, fixed position. Always
+ *    shown. Fill bar grows with percent. Outline + fill color goes
+ *    red at <=20%, green while charging, otherwise black.
+ *  - Bolt (6x14): drawn just to the LEFT of the battery while
+ *    charging. Blinks at 1 Hz to make charging unambiguous.
+ */
+
+#define TEMP_HEADER_Y  22         /* big "TEMP" header top */
+#define TEMP_VALUE_Y   52         /* big "XX oC" value top  */
+
+#define STATUS_Y       0
+#define STATUS_RIGHT_X 158
+#define STATUS_BT_X    2
+
+/* Battery icon position: hugged to the right edge of the visible area. */
+#define STATUS_BAT_X   (STATUS_RIGHT_X - BAT_ICON_W)        /* 130 */
+/* Lightning bolt sits to the left of the battery, with a 2px gap. */
+#define STATUS_BOLT_X  (STATUS_BAT_X - 2 - BOLT_W)           /* 122 */
+
+/* Cached visual state — only redraw when these change. We cache the
+ * RENDERED fill width (in pixels) rather than the raw percent, because
+ * the icon doesn't visually change for every 1% step — there are only
+ * 21 distinct fill states across the bar. */
+static int  status_fill_cached     = -1;     /* -1 = unknown */
+static int  status_color_cached    = -1;
+static bool status_bt_cached       = false;
+static bool status_charging_cached = false;
+static bool status_initialised     = false;
+
+/* Blink state for the charging bolt. Drawn/erased on a 1 Hz cycle. */
+#define BLINK_PERIOD_MS    1000
+#define BLINK_DUTY_MS       500
+static bool status_bolt_visible    = true;
+
+/* Pick the icon color for the given battery state.
+ *  - charging   -> dark green
+ *  - low (<=20) -> red
+ *  - else       -> black */
+static uint16_t batt_icon_color(uint8_t pct, bool charging)
+{
+    if (charging)            return COLOR_GREEN;
+    if (pct <= BATT_LOW_PCT) return COLOR_RED;
+    return COLOR_FG;
+}
+
+/* Draw / erase the battery icon at its fixed position. */
+static void status_draw_battery(uint8_t pct, bool charging)
+{
+    uint16_t color = batt_icon_color(pct, charging);
+    /* draw_battery_icon paints the whole 28x14 region — it overwrites
+     * any previous icon completely, no separate erase needed. */
+    draw_battery_icon(STATUS_BAT_X, STATUS_Y, pct, color);
+}
+
+/* Draw / erase the BT icon at its fixed position. */
+static void status_draw_bt(bool show)
+{
+    fill_rect(STATUS_BT_X, STATUS_Y, BT_ICON_W, BT_ICON_H, COLOR_BG);
+    if (show) {
+        draw_bt_icon(STATUS_BT_X, STATUS_Y);
+    }
+}
+
+/* Draw / erase the lightning bolt at its fixed position. */
+static void status_draw_bolt(bool show)
+{
+    fill_rect(STATUS_BOLT_X, STATUS_Y, BOLT_W, BOLT_H, COLOR_BG);
+    if (show) {
+        draw_bolt_icon(STATUS_BOLT_X, STATUS_Y, COLOR_GREEN);
+    }
+}
+
+/* Erase the entire status bar region (rarely needed — used after a
+ * full screen wipe so the redraw starts from a known empty state). */
+static void status_clear(void)
+{
+    fill_rect(0, STATUS_Y, TFT_VISIBLE_W, BAT_ICON_H, COLOR_BG);
+}
+
+static void status_force_redraw(uint8_t pct, bool bt_on, bool charging)
+{
+    int fill = bat_fill_pixels(pct);
+    int color = (int)batt_icon_color(pct, charging);
+
+    status_fill_cached     = fill;
+    status_color_cached    = color;
+    status_bt_cached       = bt_on;
+    status_charging_cached = charging;
+    status_initialised     = true;
+    status_bolt_visible    = charging;     /* visible if we're charging */
+
+    status_draw_battery(pct, charging);
+    status_draw_bt(bt_on);
+    status_draw_bolt(charging);
+}
+
+/* Idempotent — redraws only the elements whose visual state changed. */
+static void status_update(uint8_t pct, bool bt_on, bool charging)
+{
+    if (!status_initialised) {
+        status_force_redraw(pct, bt_on, charging);
+        return;
+    }
+
+    int  fill        = bat_fill_pixels(pct);
+    int  color       = (int)batt_icon_color(pct, charging);
+    bool bat_changed = (fill != status_fill_cached) ||
+                       (color != status_color_cached);
+    bool bt_changed  = (bt_on != status_bt_cached);
+    bool chg_changed = (charging != status_charging_cached);
+
+    if (bat_changed) {
+        status_draw_battery(pct, charging);
+        status_fill_cached  = fill;
+        status_color_cached = color;
+    }
+    if (chg_changed) {
+        /* When charging starts, draw the bolt; when it stops, erase it. */
+        status_draw_bolt(charging);
+        status_charging_cached = charging;
+        status_bolt_visible    = charging;
+    }
+    if (bt_changed) {
+        status_draw_bt(bt_on);
+        status_bt_cached = bt_on;
+    }
+}
+
+static void status_invalidate(void)
+{
+    status_initialised     = false;
+    status_fill_cached     = -1;
+    status_color_cached    = -1;
+    status_bt_cached       = false;
+    status_charging_cached = false;
+    status_bolt_visible    = true;
+}
+
+/* Blink the charging bolt at 1 Hz. Cheap to call every loop iteration:
+ * does nothing unless the visibility phase actually flips.
+ *
+ * Steady state: bolt is shown solid. Then once per second it disappears
+ * for 500 ms and reappears. That makes the "actively charging" signal
+ * unmistakable without distracting motion when not charging. */
+static void status_tick_blink(bool charging)
+{
+    if (!status_initialised) return;
+    if (!charging) return;     /* nothing to do when not charging */
+
+    bool want_visible = ((k_uptime_get() % BLINK_PERIOD_MS) < BLINK_DUTY_MS);
+    if (want_visible == status_bolt_visible) return;
+    status_bolt_visible = want_visible;
+
+    status_draw_bolt(want_visible);
+}
+
+/* ================= PMIC DEBUG SCREEN ================= */
+/*
+ * Replaces the temperature view with a live register dump when
+ * PMIC_DEBUG_VIEW is enabled. Reads the charger and VBUS state
+ * registers each loop iteration and shows them on the TFT.
+ *
+ * Five lines of text, 8 px tall each, fit well in the visible area
+ * below the status bar (status uses y=0..14):
+ *
+ *   y=18   VBUS=XX    (USBin status: bit0 = USB present)
+ *   y=28   STAT=XX    (charge status: bits BCTcv -> battdet/complete/trickle/cc/cv)
+ *   y=38   ERR =XX    (error reasons - non-zero means latched fault)
+ *   y=48   SENS=XX    (sensor latch)
+ *   y=58   ICHG=XX X  (readback of BCHGISETMSB / BCHGISETLSB)
+ *
+ * The values update every BATT_POLL_MS so you can plug/unplug USB and
+ * watch the registers respond. If something is stuck (e.g. ERR is
+ * always non-zero), you'll see it.
+ */
+
+#define PMIC_DBG_Y0          18
+#define PMIC_DBG_LINE_H      10
+#define PMIC_DBG_LABEL_X     2
+#define PMIC_DBG_VALUE_X     (5 * SMALL_CELL_W + 4)
+
+/* Convert a 4-bit nibble to its hex character. */
+static char nybble_to_hex(uint8_t n)
+{
+    n &= 0x0F;
+    return (n < 10) ? ('0' + n) : ('A' + n - 10);
+}
+
+/* Format a byte as two ASCII hex chars into buf[0..1]. NOT null-terminated. */
+static void byte_to_hex(uint8_t b, char *buf)
+{
+    buf[0] = nybble_to_hex(b >> 4);
+    buf[1] = nybble_to_hex(b & 0x0F);
+}
+
+static void pmic_debug_init_screen(void)
+{
+    fill_color(COLOR_BG);
+
+    /* Static labels — drawn once. Values overwrite at PMIC_DBG_VALUE_X. */
+    draw_text_small_at(PMIC_DBG_LABEL_X, PMIC_DBG_Y0 + 0 * PMIC_DBG_LINE_H,
+                       "VBUS:", COLOR_FG, COLOR_BG);
+    draw_text_small_at(PMIC_DBG_LABEL_X, PMIC_DBG_Y0 + 1 * PMIC_DBG_LINE_H,
+                       "STAT:", COLOR_FG, COLOR_BG);
+    draw_text_small_at(PMIC_DBG_LABEL_X, PMIC_DBG_Y0 + 2 * PMIC_DBG_LINE_H,
+                       "ERR :", COLOR_FG, COLOR_BG);
+    draw_text_small_at(PMIC_DBG_LABEL_X, PMIC_DBG_Y0 + 3 * PMIC_DBG_LINE_H,
+                       "SENS:", COLOR_FG, COLOR_BG);
+    draw_text_small_at(PMIC_DBG_LABEL_X, PMIC_DBG_Y0 + 4 * PMIC_DBG_LINE_H,
+                       "ICHG:", COLOR_FG, COLOR_BG);
+}
+
+/* Draw "XX  text" at value column for a given line. Always erases the
+ * full value strip first to handle width changes. */
+static void pmic_debug_draw_line(int line, uint8_t hex_byte, const char *suffix)
+{
+    int y = PMIC_DBG_Y0 + line * PMIC_DBG_LINE_H;
+
+    /* Erase the value strip — 22 chars wide, generous */
+    fill_rect(PMIC_DBG_VALUE_X, y,
+              TFT_VISIBLE_W - PMIC_DBG_VALUE_X, SMALL_CELL_H, COLOR_BG);
+
+    char buf[24];
+    byte_to_hex(hex_byte, buf);
+    buf[2] = ' ';
+    int n = 3;
+    if (suffix) {
+        for (int i = 0; suffix[i] && n < (int)sizeof(buf) - 1; i++) {
+            buf[n++] = suffix[i];
+        }
+    }
+    buf[n] = 0;
+
+    draw_text_small_at(PMIC_DBG_VALUE_X, y, buf, COLOR_FG, COLOR_BG);
+}
+
+/* Decode BCHGCHARGESTATUS into a 5-letter status: e.g.
+ *   bit 0 BATTDET  -> 'B' (else '-')
+ *   bit 1 COMPLETE -> 'F' (full)
+ *   bit 2 TRICKLE  -> 'T'
+ *   bit 3 CC       -> 'C'
+ *   bit 4 CV       -> 'V'
+ *  Result is 5 chars in the buffer. */
+static void decode_chgstat(uint8_t s, char *out5)
+{
+    out5[0] = (s & NPM_CHGSTAT_BATTDET)  ? 'B' : '-';
+    out5[1] = (s & NPM_CHGSTAT_COMPLETE) ? 'F' : '-';
+    out5[2] = (s & NPM_CHGSTAT_TRICKLE)  ? 'T' : '-';
+    out5[3] = (s & NPM_CHGSTAT_CC)       ? 'C' : '-';
+    out5[4] = (s & NPM_CHGSTAT_CV)       ? 'V' : '-';
+    out5[5] = 0;
+}
+
+/* Read all the PMIC state and update the debug screen. Cheap to call
+ * (~6 I2C transactions, ~1 ms total). */
+static void pmic_debug_update(void)
+{
+    uint8_t vbus_stat = 0, chg_stat = 0;
+    uint8_t err_reason = 0, err_sensor = 0;
+    uint8_t ichg_msb = 0, ichg_lsb = 0;
+
+    i2c_reg_read8(NPM_ADDR, NPM_BASE_VBUS, NPM_REG_VBUSINSTATUS,    &vbus_stat);
+    i2c_reg_read8(NPM_ADDR, NPM_BASE_CHG,  NPM_REG_BCHGCHARGESTATUS, &chg_stat);
+    i2c_reg_read8(NPM_ADDR, NPM_BASE_CHG,  NPM_REG_BCHGERRREASON,    &err_reason);
+    i2c_reg_read8(NPM_ADDR, NPM_BASE_CHG,  NPM_REG_BCHGERRSENSOR,    &err_sensor);
+    i2c_reg_read8(NPM_ADDR, NPM_BASE_CHG,  NPM_REG_BCHGISETMSB,      &ichg_msb);
+    i2c_reg_read8(NPM_ADDR, NPM_BASE_CHG,  NPM_REG_BCHGISETLSB,      &ichg_lsb);
+
+    pmic_debug_draw_line(0, vbus_stat,  (vbus_stat & 0x01) ? "USB" : "---");
+
+    char chg_letters[6];
+    decode_chgstat(chg_stat, chg_letters);
+    pmic_debug_draw_line(1, chg_stat, chg_letters);
+
+    pmic_debug_draw_line(2, err_reason,  (err_reason  != 0) ? "FAULT" : "OK");
+    pmic_debug_draw_line(3, err_sensor,  NULL);
+
+    /* ICHG line: also show the LSB nibble after the MSB so we can see
+     * if the value really landed (50 = 0x32 for 100mA). */
+    char ichg_buf[12];
+    byte_to_hex(ichg_msb, ichg_buf);
+    ichg_buf[2] = ' ';
+    byte_to_hex(ichg_lsb, ichg_buf + 3);
+    ichg_buf[5] = 0;
+    int yy = PMIC_DBG_Y0 + 4 * PMIC_DBG_LINE_H;
+    fill_rect(PMIC_DBG_VALUE_X, yy,
+              TFT_VISIBLE_W - PMIC_DBG_VALUE_X, SMALL_CELL_H, COLOR_BG);
+    draw_text_small_at(PMIC_DBG_VALUE_X, yy, ichg_buf, COLOR_FG, COLOR_BG);
+}
+
+/* ================= UI ================= */
+
+typedef enum { UI_OFF, UI_BLANK, UI_SPLASH, UI_TEMP } ui_state_t;
+static ui_state_t ui = UI_OFF;
+static bool device_is_on(void) { return ui != UI_OFF; }
+
+static void show_splash_animated(void)
+{
+    static const char text[] = "I SPOON";
+    int len = (int)strlen(text);
+    int x0 = (TFT_VISIBLE_W - (len * BIG_CELL_W)) / 2;
+    if (x0 < 0) x0 = 0;
+    int y = 30;
+    fill_color(COLOR_BG);
+    for (int i = 0; i < len; i++) {
+        char c = text[i];
+        if (c == ' ') continue;
+        draw_char_big(x0 + i * BIG_CELL_W, y, c, COLOR_FG, COLOR_BG);
+        k_msleep(LETTER_STEP_MS);
+    }
+}
+
+/* Lay out the temp screen. Status bar will be filled by status_update()
+ * on the next loop iteration (we call status_invalidate() so the cached
+ * state is forced to redraw). */
+static int show_temp_layout(void)
+{
+    fill_color(COLOR_BG);
+    draw_text_big_center("TEMP", TEMP_HEADER_Y, COLOR_FG, COLOR_BG);
+
+    const int VAL_LEN = 5;
+    int x = (TFT_VISIBLE_W - VAL_LEN * BIG_CELL_W) / 2;
+    draw_text_big_at(x, TEMP_VALUE_Y, "00 oC", COLOR_FG, COLOR_BG);
+
+    status_invalidate();
+    return x;
+}
+
+/* ================= DEEP SLEEP (SYSTEM OFF) ================= */
+/*
+ * Put the nRF52840 into System OFF — the deepest sleep mode (~1-3 uA).
+ * The CPU and most peripherals are shut down. Only the GPIO SENSE
+ * mechanism stays active to detect the wake-up event.
+ *
+ * Wake-up: a HIGH level on the touch pin (P0.16). When that happens,
+ * the chip RESETS — execution restarts at main(). RAM is not retained;
+ * we don't rely on anything carrying over.
+ *
+ * The nPM1304 is a separate chip on its own power rail, so it keeps
+ * doing its job (charging the battery from USB) while the nRF52840
+ * is asleep — exactly what we want.
+ *
+ * Note: BLE / TFT / buzzer must be torn down by the caller BEFORE
+ * invoking this. We don't redo that here because the caller has the
+ * cleanest knowledge of "we're shutting down now". This function
+ * NEVER returns.
+ */
+static void enter_deep_sleep(void)
+{
+    LOG_INF("Entering System OFF — touch P0.16 to wake");
+
+    /* Configure the touch pin as input with SENSE on rising edge.
+     * Touch is active-HIGH, so SENSE_HIGH wakes the chip when the
+     * user touches.
+     *
+     * NRF_GPIO_PIN_NOPULL: the touch IC drives the line itself, no
+     * internal pull needed. */
+    nrf_gpio_cfg_input(TOUCH_PIN, NRF_GPIO_PIN_NOPULL);
+    nrf_gpio_cfg_sense_set(TOUCH_PIN, NRF_GPIO_PIN_SENSE_HIGH);
+
+    /* Brief wait so any in-flight log lines flush over RTT. */
+    k_msleep(20);
+
+    /* Lock interrupts to prevent anything else firing during the
+     * transition into OFF. (Belt and suspenders — sys_poweroff() is
+     * supposed to handle this internally too.) */
+    (void)irq_lock();
+
+    /* Doesn't return. The chip resets when touch goes HIGH. */
+    sys_poweroff();
+
+    /* If we somehow get here, just spin so we don't fall through to
+     * undefined behaviour. */
+    while (1) { k_cpu_idle(); }
+}
+
+/* Wait for the user to confirm a wake-up by holding the touch sensor
+ * for the on-hold duration. Called once at the top of main() — if the
+ * user just brushed the sensor or we cold-booted with no touch, we go
+ * straight back to sleep instead of running. This prevents accidental
+ * wake-ups from starting a session.
+ *
+ * Returns true if the hold was confirmed. If false, the caller MUST
+ * sleep again (which we do directly — see main()). */
+static bool wait_for_confirmed_press(void)
+{
+    int64_t start_ms = k_uptime_get();
+    int     prev = -1;       /* -1 forces first read */
+
+    while (1) {
+        int touch = gpio_pin_get(gpio0, TOUCH_PIN);
+        int64_t now = k_uptime_get();
+
+        if (touch != prev) {
+            if (touch == 0) {
+                /* User let go before the hold completed -> abort. */
+                return false;
+            }
+            /* Touch became active: (re)start the timer. We re-time
+             * from each rising edge so a quick release-and-press
+             * doesn't accumulate hold time. */
+            start_ms = now;
+            prev = touch;
+        }
+
+        if (touch == 1 && (now - start_ms) >= TOUCH_ON_HOLD_MS) {
+            return true;
+        }
+
+        /* Tiny sleep to keep the CPU quiet while polling. */
+        k_msleep(20);
+
+        /* Safety bound: if we somehow stay here for >10 s without
+         * resolution, assume the worst and go back to sleep. */
+        if ((now - start_ms) > 10000 && touch == 0) {
+            return false;
+        }
+    }
+}
+
+/* ================= MAIN ================= */
+
+void main(void)
+{
+    spi_dev = DEVICE_DT_GET(SPI_NODE);
+    gpio0   = DEVICE_DT_GET(DT_NODELABEL(gpio0));
+    gpio1   = DEVICE_DT_GET(DT_NODELABEL(gpio1));
+    i2c_dev = DEVICE_DT_GET(I2C_NODE);
+
+    /* ----- Minimal bringup needed to check the touch wake-up ----- */
+    gpio_pin_configure(gpio0, TOUCH_PIN, GPIO_INPUT);
+
+    /* If the user isn't holding touch (cold boot, or we just woke from
+     * a brief glitch), go straight back to sleep. We only do the full
+     * hardware bringup when we have a confirmed long press.
+     *
+     * NOTE: this means after flashing the firmware, the device will
+     * appear "dead" until you hold the touch sensor for 2 seconds.
+     * That's the production behaviour. */
+    if (!wait_for_confirmed_press()) {
+        enter_deep_sleep();    /* never returns */
+    }
+
+    /* ----- Full hardware bringup (only reached after confirmed press) ----- */
+    gpio_pin_configure(gpio1, TFT_CS_PIN,  GPIO_OUTPUT_HIGH);
+    gpio_pin_configure(gpio1, TFT_DC_PIN,  GPIO_OUTPUT_HIGH);
+    gpio_pin_configure(gpio1, TFT_RST_PIN, GPIO_OUTPUT_HIGH);
+    gpio_pin_configure(gpio0, LED_PIN,     GPIO_OUTPUT_HIGH);
+    gpio_pin_configure(gpio0, BUZZER_PIN,  GPIO_OUTPUT_LOW);
+
+    tft_init();
+    fill_color(COLOR_BG);
+    /* No tft_sleep() here — we're going straight into the on-cycle. */
+    gpio_pin_set(gpio0, LED_PIN, 0);     /* LED on (active-low) */
+
+    /* ADC */
+    const struct device *adc = DEVICE_DT_GET(DT_NODELABEL(adc));
+    adc_channel_setup(adc, &(struct adc_channel_cfg){
+        .gain           = ADC_GAIN_1_6,
+        .reference      = ADC_REF_INTERNAL,
+        .channel_id     = 0,
+        .input_positive = SAADC_CH_PSELP_PSELP_AnalogInput0,
+    });
+    int16_t sample;
+    struct adc_sequence seq = {
+        .channels    = BIT(0),
+        .buffer      = &sample,
+        .buffer_size = sizeof(sample),
+        .resolution  = 12,
+    };
+
+    /* I2C devices: BMI323 + nPM1304. PMIC config persists across
+     * touch-on/off; we configure once at boot so charging always works
+     * even when the screen is off. */
+    bool imu_ready = (bmi323_init() == 0);
+    if (!imu_ready) LOG_WRN("BMI323 init failed");
+
+    bool pmic_ready = (npm_init() == 0);
+    if (!pmic_ready) LOG_WRN("nPM1304 init failed");
+
+    /* Bring up BLE stack but don't advertise until power-on. */
+    if (ble_setup() != 0) LOG_ERR("BLE setup failed");
+
+    /* Per-on-cycle UI state */
+    int64_t blank_end_ms = 0, splash_end_ms = 0;
+    int     val_x = 0;          (void)val_x;
+    int     last_temp = INT_MIN;
+    char    prev_buf[8] = {0};
+
+    int     prev_touch = 0;
+    int64_t hold_start = 0;
+    /* armed=false because the user is currently still holding the
+     * touch (that's how they woke us up). They must release first
+     * before the 3-second off-hold can register. */
+    bool    armed = false;
+
+    /* Battery polling state (runs whenever the device is on). */
+    int64_t  next_batt_ms = 0;
+    uint16_t batt_mv = 0;
+    uint8_t  batt_pct = 0;
+    uint8_t  batt_flags = 0;     /* bit0=USB, bit1=charging */
+
+    /* Battery percent smoothing across charging/discharging transitions.
+     *   - last_charging tracks the previous sample's charge state
+     *   - transient_left counts down samples after a state change,
+     *     during which we slew-limit the displayed percent. */
+    bool last_charging   = false;
+    int  transient_left  = 0;
+    bool batt_pct_valid  = false;     /* false until first reading */
+
+    /* Temperature warning state. `warn_armed` flips false after a beep
+     * fires, and back to true only when temp drops below the rearm
+     * threshold. So holding at >=55 doesn't re-trigger. */
+    bool warn_armed = true;
+
+    /* ----- Start the on-cycle directly -----
+     *
+     * We just confirmed a long-press wake-up, so we go straight into
+     * the BLANK -> SPLASH -> TEMP sequence. UI_OFF is no longer used
+     * during runtime — "off" now means the chip is actually in System
+     * OFF, not in this state machine. */
+    bite_reset();
+    bite.active = imu_ready;
+    adc_filter_reset();
+    status_invalidate();
+    int64_t now0 = k_uptime_get();
+    next_batt_ms = now0;
+    blank_end_ms = now0 + BLANK_HOLD_MS;
+    ui = UI_BLANK;
+
+    ble_start_advertising();
+    send_info(INFO_POWER_ON);
+
+    while (1) {
+        /* ============== TOUCH ============== */
+        int     touch = gpio_pin_get(gpio0, TOUCH_PIN);
+        int64_t now   = k_uptime_get();
+
+        if (touch == 1 && prev_touch == 0) hold_start = now;
+        if (touch == 0 && prev_touch == 1) armed = true;
+        prev_touch = touch;
+
+        /* 3-second hold -> deep sleep. There's no power-on branch
+         * anymore because we boot already powered on. */
+        if (touch == 1 && armed && (now - hold_start) >= TOUCH_OFF_HOLD_MS) {
+            send_info(INFO_POWER_OFF);
+            ble_stop_advertising_and_disconnect();
+
+            /* Silence buzzer, dim panel, drop LED. */
+            buzzer_until_ms = 0;
+            gpio_pin_set(gpio0, BUZZER_PIN, 0);
+            tft_sleep();
+            gpio_pin_set(gpio0, LED_PIN, 1);
+
+            /* Brief settle so the BLE disconnect actually goes out
+             * before we yank the radio. */
+            k_msleep(50);
+
+            enter_deep_sleep();    /* never returns */
+        }
+
+        /* ============== UI ============== */
+        switch (ui) {
+        case UI_OFF:
+            break;
+
+        case UI_BLANK:
+            if (now >= blank_end_ms) {
+                show_splash_animated();
+                splash_end_ms = k_uptime_get() + SPLASH_HOLD_MS;
+                ui = UI_SPLASH;
+            }
+            break;
+
+        case UI_SPLASH:
+            if (now >= splash_end_ms) {
+#if PMIC_DEBUG_VIEW
+                pmic_debug_init_screen();
+                next_batt_ms = now;        /* force immediate read */
+#else
+                val_x = show_temp_layout();
+                last_temp = INT_MIN;
+                memset(prev_buf, 0, sizeof(prev_buf));
+                adc_filter_reset();
+#endif
+                ui = UI_TEMP;
+            }
+            break;
+
+        case UI_TEMP: {
+            /* --- Battery (every BATT_POLL_MS) --- */
+            if (pmic_ready && now >= next_batt_ms) {
+                next_batt_ms = now + BATT_POLL_MS;
+
+                uint16_t mv = npm_read_vbat_mv();
+                if (mv > 0) {
+                    /* Read PMIC state first — needed for state-aware
+                     * percent calculation. */
+                    uint8_t vbus_stat = 0, chg_stat = 0;
+                    i2c_reg_read8(NPM_ADDR, NPM_BASE_VBUS,
+                                  NPM_REG_VBUSINSTATUS, &vbus_stat);
+                    i2c_reg_read8(NPM_ADDR, NPM_BASE_CHG,
+                                  NPM_REG_BCHGCHARGESTATUS, &chg_stat);
+
+                    bool charging = (chg_stat & NPM_CHGSTAT_CHARGING) != 0;
+
+                    /* Detect transition: arm slew-limit window. */
+                    if (batt_pct_valid && charging != last_charging) {
+                        transient_left = SOC_TRANSIENT_SAMPLES;
+                    }
+                    last_charging = charging;
+
+                    /* Compute raw target percent (no state-aware bias). */
+                    uint8_t raw_pct = npm_battery_percent(mv);
+
+                    uint8_t shown_pct;
+                    if (!batt_pct_valid) {
+                        /* First reading after power-on — accept as-is. */
+                        shown_pct = raw_pct;
+                        batt_pct_valid = true;
+                    } else if (transient_left > 0) {
+                        /* In transition window: slew-limit the displayed
+                         * value toward the target. This hides any residual
+                         * jump as a smooth ~6 s climb. */
+                        int16_t delta = (int16_t)raw_pct - (int16_t)batt_pct;
+                        if (delta >  SOC_SLEW_MAX_PCT) delta =  SOC_SLEW_MAX_PCT;
+                        if (delta < -SOC_SLEW_MAX_PCT) delta = -SOC_SLEW_MAX_PCT;
+                        shown_pct = (uint8_t)((int16_t)batt_pct + delta);
+                        transient_left--;
+                    } else {
+                        /* Steady state — track the raw value directly. */
+                        shown_pct = raw_pct;
+                    }
+
+                    uint8_t flags = 0;
+                    if (vbus_stat & 0x01) flags |= 0x01;
+                    if (charging)         flags |= 0x02;
+
+                    batt_mv = mv; batt_pct = shown_pct; batt_flags = flags;
+                    send_batt(batt_mv, batt_pct, batt_flags);
+
+#if PMIC_DEBUG_VIEW
+                    /* Refresh debug screen with the latest registers. */
+                    pmic_debug_update();
+#endif
+                }
+            }
+
+#if !PMIC_DEBUG_VIEW
+            /* --- Status bar (BT icon + battery percent + charging zap) --- */
+            status_update(batt_pct,
+                          atomic_get(&bt_connected) != 0,
+                          (batt_flags & 0x02) != 0);
+
+            /* Tick the charging-bolt blink. Cheap no-op when not charging. */
+            status_tick_blink((batt_flags & 0x02) != 0);
+
+            /* --- Temperature --- */
+            adc_read(adc, &seq);
+            if (sample < 1) sample = 1;
+            float filt = adc_filter_push((int32_t)sample);
+            float v = filt * V_SUPPLY / 4095.0f;
+            float t = ntc_temp(v);
+            int t_int = hysteresis_round(t, last_temp);
+            if (t_int < 0)  t_int = 0;
+            if (t_int > 99) t_int = 99;
+            if (t_int != last_temp) {
+                char buf[8];
+                snprintf(buf, sizeof(buf), "%02d oC", t_int);
+                for (int i = 0; i < 5; i++) {
+                    if (buf[i] != prev_buf[i]) {
+                        draw_char_big(val_x + i * BIG_CELL_W, TEMP_VALUE_Y,
+                                      buf[i], COLOR_FG, COLOR_BG);
+                        prev_buf[i] = buf[i];
+                    }
+                }
+                last_temp = t_int;
+                send_temp(t_int);    /* notify subscribers when value changes */
+
+                /* High-temperature warning with hysteresis.
+                 *   - Beep once when temperature reaches >= 55 °C.
+                 *   - Don't beep again while it stays high.
+                 *   - Re-arm only after it drops below 50 °C. */
+                if (warn_armed && t_int >= TEMP_WARN_HIGH_C) {
+                    buzzer_beep(BUZZER_DURATION_MS);
+                    warn_armed = false;
+                } else if (!warn_armed && t_int < TEMP_WARN_REARM_C) {
+                    warn_armed = true;
+                }
+            }
+
+            /* --- IMU + bite detection --- */
+            if (bite.active) {
+                int16_t raw[6];
+                int ret = bmi323_read_burst(BMI323_REG_ACC_DATA_X, raw, 6);
+                if (ret == 0) {
+                    bite_step(raw[0], raw[1], raw[2],
+                              raw[3], raw[4], raw[5]);
+                } else {
+                    send_info(INFO_IMU_READ_ERR);
+                }
+            }
+#endif /* !PMIC_DEBUG_VIEW */
+            break;
+        }
+        }
+
+        k_msleep(LOOP_MS);
+    }
+}

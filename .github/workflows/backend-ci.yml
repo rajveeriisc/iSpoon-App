@@ -1,0 +1,47 @@
+name: Backend CI
+
+on:
+  pull_request:
+    paths:
+      - "ispoon-backend/**"
+      - ".github/workflows/backend-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "ispoon-backend/**"
+      - ".github/workflows/backend-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: ispoon-backend
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ispoon-backend/package-lock.json
+      - run: npm ci
+      - run: npm run check
+        env:
+          NODE_ENV: test
+      # --omit=dev: gate on what actually ships, not on dev tooling.
+      # The only remaining high advisories are braces <- chokidar <- nodemon,
+      # a devDependency already pinned at its latest release (3.1.14) with no
+      # fixed version published, so the gate was unpassable while telling us
+      # nothing about production risk. `npm audit --omit=dev` reports 0
+      # vulnerabilities of any severity for the runtime tree.
+      - name: Reject high or critical dependency vulnerabilities (production deps)
+        run: npm audit --audit-level=high --omit=dev

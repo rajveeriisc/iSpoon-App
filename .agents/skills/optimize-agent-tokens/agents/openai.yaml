@@ -1,0 +1,4 @@
+interface:
+  display_name: "Optimize Agent Tokens"
+  short_description: "Reduce context and token waste safely"
+  default_prompt: "Use $optimize-agent-tokens to audit this task or repository for unnecessary context and token usage."

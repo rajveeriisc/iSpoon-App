@@ -1,0 +1,27 @@
+node_modules
+.env
+.env.*
+!.env.example
+
+# Secrets & credentials
+secrets/
+*.pem
+*.key
+*.p12
+serviceAccount.json
+fix-env.txt
+test-env.txt
+*.env.local
+*.env.bak
+
+# Logs
+*.log
+lt.log
+lt_new.log
+ngrok.log
+
+# OS
+.DS_Store
+
+# User uploads (avatars are public at runtime; never commit binaries)
+uploads/

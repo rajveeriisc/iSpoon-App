@@ -1,0 +1,60 @@
+﻿# Node & Flutter
+node_modules/
+.flutter-plugins
+.flutter-plugins-dependencies
+.dart_tool/
+build/
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
+
+# Env & secrets
+**/.env
+**/.env.*
+!**/.env.example
+**/serviceAccount.json
+# **/google-services.json  -- tracked: public client config, see lib/firebase_options.dart
+# **/GoogleService-Info.plist  -- tracked: public client config, see lib/firebase_options.dart
+**/fix-env.txt
+**/test-env.txt
+.cursor/
+
+# Generated
+smartspoon/**/GeneratedPluginRegistrant.*
+smartspoon/flutter_0*.png
+smartspoon/analysis_output.txt
+smartspoon/analyze_output.txt
+smartspoon/flutter_build.log
+*.log
+.ngrok-log.txt
+
+# Python (ML service — removed; ignore if recreated)
+**/__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.superpowers/
+ispoon-ml-service/
+
+# Backend user uploads
+ispoon-backend/uploads/
+
+# Stray reference-image folder (typo)
+smartspoon/iamges/
+
+# OS junk
+.DS_Store
+**/.DS_Store
+# Python virtualenv — 368 MB / 12,712 files, never belongs in git
+**/venv/
+**/.venv/
+
+# Unsupported platform scaffolds — this app is Android + iOS only
+# (firebase_options.dart throws UnsupportedError for the rest).
+# Regenerate with: flutter create --platforms=<name> .
+smartspoon/macos/
+smartspoon/linux/
+smartspoon/windows/
+smartspoon/web/

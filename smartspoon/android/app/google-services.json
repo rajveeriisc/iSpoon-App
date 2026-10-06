@@ -1,0 +1,70 @@
+{
+  "project_info": {
+    "project_number": "129116938699",
+    "project_id": "i-spoon-auth",
+    "storage_bucket": "i-spoon-auth.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:129116938699:android:efe45e648dda46c74e564e",
+        "android_client_info": {
+          "package_name": "com.example.smartspoon"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "129116938699-0kkfkjmjcut3jj13v9a45nvj61tn5rra.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.smartspoon",
+            "certificate_hash": "e2f4ad4dea38e3a99797fc946eb8512f3eb7e0bd"
+          }
+        },
+        {
+          "client_id": "129116938699-f8ncrov3u07u7pi21mrum3kb3chp6nbg.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.smartspoon",
+            "certificate_hash": "c06351a326a68f36583b8536419082e30d1a6906"
+          }
+        },
+        {
+          "client_id": "129116938699-kh0u9o1a87v1n0rfsgrqv9hkhnh9tjn7.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.smartspoon",
+            "certificate_hash": "8a9d96561cff35dc0011a72295f40424af5e050d"
+          }
+        },
+        {
+          "client_id": "129116938699-arcgegjkutao02cc5j87elu9nq7ejg2b.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCIWOCzZd82_Mf0zWGVpjN8CzGc5FYFMmY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "129116938699-arcgegjkutao02cc5j87elu9nq7ejg2b.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "129116938699-l25ja5eg9mckjh9vnegpt2h54r7onctn.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "ispoon"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

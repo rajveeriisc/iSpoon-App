@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Legacy backup rules for Android 6.0-11 (API 23-30). See data_extraction_rules.xml. -->
+<full-backup-content>
+    <exclude domain="sharedpref" path="ispoon_secure_prefs.xml" />
+    <!-- Default prefs file holds the plaintext auth-token fallback written for
+         background isolates. Never back it up / transfer it off-device. -->
+    <exclude domain="sharedpref" path="FlutterSharedPreferences.xml" />
+    <exclude domain="database" path="smartspoon.db" />
+</full-backup-content>
