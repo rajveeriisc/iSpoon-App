@@ -120,9 +120,9 @@ class DatabaseService {
           AVG(CASE WHEN b.tremor_magnitude <= 3.0 THEN b.tremor_magnitude END)               AS avg_tremor_magnitude,
           AVG(CASE WHEN b.tremor_confidence >= 0.5 AND b.tremor_window_ms >= 3000 THEN b.tremor_frequency END) AS avg_tremor_frequency,
           COUNT(CASE WHEN b.tremor_confidence >= 0.5 AND b.tremor_window_ms >= 3000 THEN b.tremor_frequency END) AS tremor_rhythmic_count,
-          SUM(CASE WHEN b.tremor_magnitude <= 3.0 AND b.tremor_magnitude < 0.6  THEN 1 ELSE 0 END) AS tremor_low_count,
-          SUM(CASE WHEN b.tremor_magnitude <= 3.0 AND b.tremor_magnitude >= 0.6 AND b.tremor_magnitude < 1.4 THEN 1 ELSE 0 END) AS tremor_moderate_count,
-          SUM(CASE WHEN b.tremor_magnitude <= 3.0 AND b.tremor_magnitude >= 1.4 THEN 1 ELSE 0 END) AS tremor_high_count,
+          SUM(CASE WHEN b.tremor_magnitude <= 3.0 AND b.tremor_magnitude <= 0.30 THEN 1 ELSE 0 END) AS tremor_low_count,
+          SUM(CASE WHEN b.tremor_magnitude <= 3.0 AND b.tremor_magnitude >  0.30 AND b.tremor_magnitude <= 0.75 THEN 1 ELSE 0 END) AS tremor_moderate_count,
+          SUM(CASE WHEN b.tremor_magnitude <= 3.0 AND b.tremor_magnitude >  0.75 THEN 1 ELSE 0 END) AS tremor_high_count,
           AVG(b.food_temp_c)                                                                AS avg_food_temp_c,
           -- Steadiness must mean the same thing here as on the meal and in AI
           -- Lab: the share of MEASURED TIME without a repeated rhythm. Taking
@@ -1152,9 +1152,9 @@ class DatabaseService {
         COUNT(*)                                                                                      AS total_bites,
         AVG(CASE WHEN tremor_magnitude IS NOT NULL AND tremor_magnitude <= 3.0 THEN tremor_magnitude END) AS avg_tremor_magnitude,
         AVG(CASE WHEN tremor_frequency IS NOT NULL THEN tremor_frequency END)                         AS avg_tremor_frequency,
-        SUM(CASE WHEN tremor_magnitude IS NOT NULL AND tremor_magnitude <= 3.0 AND tremor_magnitude < 0.6  THEN 1 ELSE 0 END) AS tremor_low,
-        SUM(CASE WHEN tremor_magnitude IS NOT NULL AND tremor_magnitude <= 3.0 AND tremor_magnitude >= 0.6 AND tremor_magnitude < 1.4 THEN 1 ELSE 0 END) AS tremor_moderate,
-        SUM(CASE WHEN tremor_magnitude IS NOT NULL AND tremor_magnitude <= 3.0 AND tremor_magnitude >= 1.4 THEN 1 ELSE 0 END) AS tremor_high,
+        SUM(CASE WHEN tremor_magnitude IS NOT NULL AND tremor_magnitude <= 3.0 AND tremor_magnitude <= 0.30 THEN 1 ELSE 0 END) AS tremor_low,
+        SUM(CASE WHEN tremor_magnitude IS NOT NULL AND tremor_magnitude <= 3.0 AND tremor_magnitude >  0.30 AND tremor_magnitude <= 0.75 THEN 1 ELSE 0 END) AS tremor_moderate,
+        SUM(CASE WHEN tremor_magnitude IS NOT NULL AND tremor_magnitude <= 3.0 AND tremor_magnitude >  0.75 THEN 1 ELSE 0 END) AS tremor_high,
         AVG(CASE WHEN food_temp_c IS NOT NULL AND food_temp_c > 0 THEN food_temp_c END)               AS avg_food_temp
       FROM bites
       WHERE meal_uuid = ? AND is_valid = 1
@@ -1410,11 +1410,21 @@ class DatabaseService {
         AVG(CASE WHEN b.tremor_confidence >= 0.5 AND b.tremor_window_ms >= 3000 THEN b.tremor_frequency END) AS avg_frequency,
         COUNT(CASE WHEN b.tremor_confidence >= 0.5 AND b.tremor_window_ms >= 3000 THEN b.tremor_frequency END) AS rhythmic_sample_count,
         AVG(CASE WHEN b.tremor_magnitude <= 3.0 THEN b.tremor_magnitude END)               AS avg_magnitude,
-        AVG(m.steady_pct)                                                                  AS avg_steady_pct,
+        -- Weighted by measured time, matching getDailySummaries above. A plain
+        -- AVG() over a bites JOIN weights each meal by its BITE COUNT, so a
+        -- 20-second sample counted as heavily as a ten-minute one and the
+        -- "% steady" headline disagreed with the index shown beside it.
+        (SELECT CASE WHEN SUM(ms.measured_seconds) > 0
+                     THEN SUM(ms.steady_pct * ms.measured_seconds)
+                          / SUM(ms.measured_seconds) END
+         FROM meals ms
+         WHERE ms.user_id = m.user_id
+           AND substr(ms.started_at, 1, 10) = substr(m.started_at, 1, 10)
+           AND ms.steady_pct IS NOT NULL)                                                  AS avg_steady_pct,
         COUNT(b.id)                                                                        AS sample_count,
-        SUM(CASE WHEN b.tremor_magnitude <= 3.0 AND b.tremor_magnitude <  0.6 THEN 1 ELSE 0 END) AS low_count,
-        SUM(CASE WHEN b.tremor_magnitude <= 3.0 AND b.tremor_magnitude >= 0.6 AND b.tremor_magnitude < 1.4 THEN 1 ELSE 0 END) AS moderate_count,
-        SUM(CASE WHEN b.tremor_magnitude <= 3.0 AND b.tremor_magnitude >= 1.4 THEN 1 ELSE 0 END) AS high_count
+        SUM(CASE WHEN b.tremor_magnitude <= 3.0 AND b.tremor_magnitude <= 0.30 THEN 1 ELSE 0 END) AS low_count,
+        SUM(CASE WHEN b.tremor_magnitude <= 3.0 AND b.tremor_magnitude >  0.30 AND b.tremor_magnitude <= 0.75 THEN 1 ELSE 0 END) AS moderate_count,
+        SUM(CASE WHEN b.tremor_magnitude <= 3.0 AND b.tremor_magnitude >  0.75 THEN 1 ELSE 0 END) AS high_count
       FROM meals  m
       JOIN bites  b ON b.meal_uuid = m.uuid
       WHERE m.user_id = ? AND m.started_at >= ? AND m.started_at <= ?
@@ -1435,6 +1445,7 @@ class DatabaseService {
     final db = await database;
     final filterSpoon = spoonKey != null && spoonKey.isNotEmpty;
     final spoonClause = filterSpoon ? ' AND m.spoon_key = ?' : '';
+    final spoonSubClauseMt = filterSpoon ? ' AND ms.spoon_key = m.spoon_key' : '';
     return db.rawQuery(
       '''
       SELECT
@@ -1443,10 +1454,20 @@ class DatabaseService {
         AVG(CASE WHEN b.tremor_confidence >= 0.5 AND b.tremor_window_ms >= 3000 THEN b.tremor_frequency END) AS avg_frequency,
         COUNT(CASE WHEN b.tremor_confidence >= 0.5 AND b.tremor_window_ms >= 3000 THEN b.tremor_frequency END) AS rhythmic_sample_count,
         AVG(CASE WHEN b.tremor_magnitude <= 3.0 THEN b.tremor_magnitude END)               AS avg_magnitude,
-        AVG(m.steady_pct)                                                                  AS avg_steady_pct,
-        SUM(CASE WHEN b.tremor_magnitude <= 3.0 AND b.tremor_magnitude <  0.6 THEN 1 ELSE 0 END) AS low_count,
-        SUM(CASE WHEN b.tremor_magnitude <= 3.0 AND b.tremor_magnitude >= 0.6 AND b.tremor_magnitude < 1.4 THEN 1 ELSE 0 END) AS moderate_count,
-        SUM(CASE WHEN b.tremor_magnitude <= 3.0 AND b.tremor_magnitude >= 1.4 THEN 1 ELSE 0 END) AS high_count
+        -- Time-weighted, as above. Correlated on spoon_key rather than taking
+        -- another bind parameter, which gives the same restriction as the
+        -- outer spoon filter without disturbing argument order.
+        (SELECT CASE WHEN SUM(ms.measured_seconds) > 0
+                     THEN SUM(ms.steady_pct * ms.measured_seconds)
+                          / SUM(ms.measured_seconds) END
+         FROM meals ms
+         WHERE ms.user_id = m.user_id
+           AND substr(ms.started_at, 1, 10) = substr(m.started_at, 1, 10)
+           AND ms.meal_type = m.meal_type
+           AND ms.steady_pct IS NOT NULL$spoonSubClauseMt)                                 AS avg_steady_pct,
+        SUM(CASE WHEN b.tremor_magnitude <= 3.0 AND b.tremor_magnitude <= 0.30 THEN 1 ELSE 0 END) AS low_count,
+        SUM(CASE WHEN b.tremor_magnitude <= 3.0 AND b.tremor_magnitude >  0.30 AND b.tremor_magnitude <= 0.75 THEN 1 ELSE 0 END) AS moderate_count,
+        SUM(CASE WHEN b.tremor_magnitude <= 3.0 AND b.tremor_magnitude >  0.75 THEN 1 ELSE 0 END) AS high_count
       FROM meals  m
       JOIN bites  b ON b.meal_uuid = m.uuid
       WHERE m.user_id = ? AND m.started_at >= ? AND m.started_at <= ?$spoonClause

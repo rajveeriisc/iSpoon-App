@@ -283,9 +283,11 @@ class _BiteHistoryPageState extends State<BiteHistoryPage> {
       });
     }
 
-    final totalBites = selectedMeal == 'All'
-        ? range.fold<int>(0, (sum, e) => sum + e.totalBites)
-        : (mealAgg[selectedMeal] ?? 0);
+    // Always every meal in the period. The meal dropdown sits under "Daily
+    // Breakdown" and scopes THAT TABLE; it used to silently rewrite the two
+    // cards above it as well, which is what produced "Period Total 22" while
+    // the distribution underneath listed Lunch at 51.
+    final totalBites = range.fold<int>(0, (sum, e) => sum + e.totalBites);
     final totalDuration = range.fold<double>(
       0,
       (sum, e) => sum + e.totalDurationMin,
@@ -345,7 +347,7 @@ class _OverviewStrip extends StatelessWidget {
             value: '${aggregate.totalBites}',
             unit: 'total bites',
             subtitle:
-                'Avg ${(days > 0 ? (aggregate.totalBites / days) : 0).toStringAsFixed(1)}/day',
+                'All meals · avg ${(days > 0 ? (aggregate.totalBites / days) : 0).toStringAsFixed(1)}/day',
             color: AppTheme.caramel,
             icon: Icons.analytics,
           ),
@@ -358,7 +360,7 @@ class _OverviewStrip extends StatelessWidget {
                 ? '0.0'
                 : aggregate.avgPace.toStringAsFixed(1),
             unit: 'bites/min',
-            subtitle: 'Average over $days days',
+            subtitle: 'All meals, over $days days',
             color: AppTheme.caramel,
             icon: Icons.timer,
           ),
@@ -366,6 +368,31 @@ class _OverviewStrip extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Share of the period's bites held by each meal, in percent.
+///
+/// A distribution has to be taken over the things it is drawing. This used to
+/// divide each meal by `aggregate.totalBites`, which the meal filter had
+/// already narrowed to ONE meal — so with "Snacks" selected, Lunch's 51 bites
+/// over Snacks' 22 rendered as "232%", and the number fed straight into a
+/// FractionallySizedBox, drawing that bar at 2.3x the width of its card.
+///
+/// Guarantees: no entry exceeds 100, and the entries sum to 100 whenever any
+/// bites exist.
+Map<String, double> mealDistributionShares(Map<String, int> mealBites) {
+  final positive = <String, int>{
+    for (final e in mealBites.entries)
+      if (e.value > 0) e.key: e.value,
+  };
+  final total = positive.values.fold<int>(0, (sum, v) => sum + v);
+  if (total <= 0) {
+    return {for (final k in mealBites.keys) k: 0.0};
+  }
+  return {
+    for (final k in mealBites.keys)
+      k: (((positive[k] ?? 0) / total) * 100).clamp(0.0, 100.0),
+  };
 }
 
 class _MealBreakdownChart extends StatelessWidget {
@@ -378,7 +405,8 @@ class _MealBreakdownChart extends StatelessWidget {
     final meals = aggregate.mealBites.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
 
-    final total = aggregate.totalBites;
+    final shares = mealDistributionShares(aggregate.mealBites);
+    final total = meals.fold<int>(0, (sum, e) => sum + e.value);
 
     return Container(
       padding: const EdgeInsets.all(24),
@@ -416,7 +444,7 @@ class _MealBreakdownChart extends StatelessWidget {
             )
           else
             ...meals.map((meal) {
-              final double percentage = (meal.value / total) * 100;
+              final double percentage = shares[meal.key] ?? 0.0;
               return Padding(
                 padding: const EdgeInsets.only(bottom: 16),
                 child: Column(
@@ -457,7 +485,7 @@ class _MealBreakdownChart extends StatelessWidget {
                           ),
                         ),
                         FractionallySizedBox(
-                          widthFactor: percentage / 100,
+                          widthFactor: (percentage / 100).clamp(0.0, 1.0),
                           child: Container(
                             height: 10,
                             decoration: BoxDecoration(

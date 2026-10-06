@@ -94,6 +94,11 @@ class _InsightsDashboardState extends State<InsightsDashboard> {
                               title: 'Total Bites',
                               value: '${unifiedData.selectedTotalBites}',
                               color: AppTheme.emerald,
+                              // Both figures here are TODAY's, from
+                              // _todayStatsForDevice. The pages they open
+                              // default to seven days, so leaving the period
+                              // off made the two look like they disagreed.
+                              subtitle: 'today',
                               onTap: () {
                                 Navigator.push(
                                   context,
@@ -110,7 +115,7 @@ class _InsightsDashboardState extends State<InsightsDashboard> {
                               value:
                                   '${(unifiedData.selectedAvgBiteTime).toStringAsFixed(1)}s',
                               color: AppTheme.primary,
-                              subtitle: 'sec / bite',
+                              subtitle: 'today · sec between bites',
                               onTap: () {
                                 Navigator.push(
                                   context,

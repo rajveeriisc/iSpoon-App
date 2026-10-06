@@ -434,6 +434,10 @@ class _TremorAggregate {
   final bool fromModel;
 }
 
+/// "1 reading" / "12 readings" — this count sits next to a measurement, so a
+/// mismatched plural reads as a bug in the data rather than in the string.
+String _readings(int n) => n == 1 ? '1 reading' : '$n readings';
+
 class _OverviewStrip extends StatelessWidget {
   const _OverviewStrip({required this.aggregate, required this.days});
 
@@ -461,19 +465,22 @@ class _OverviewStrip extends StatelessWidget {
     final typicalSubtitle = !hasData
         ? 'No clean readings yet'
         : likelyLegacyReading
-        ? '${aggregate.avgMagnitude.toStringAsFixed(2)} / 3 across ${aggregate.totalSamples} readings; quality details unavailable'
+        ? '${aggregate.avgMagnitude.toStringAsFixed(2)} / 3 across '
+              '${_readings(aggregate.totalSamples)}; quality details unavailable'
         // Same wording as Home and AI Lab: the share of measured time that
         // carried no repeated rhythm, with the raw index kept for reference.
         : '${(aggregate.steadyPct ?? (100 - aggregate.avgMagnitude / 3 * 100)).round()}% '
               'steady, measured ${_measuredLabel(aggregate.measuredSeconds)} '
-              'across ${aggregate.totalSamples} readings';
+              'across ${_readings(aggregate.totalSamples)}';
     final rhythmValue = aggregate.avgFrequency > 0
         ? aggregate.avgFrequency.toStringAsFixed(1)
         : likelyLegacyReading
         ? 'Not recorded'
         : 'Not seen';
-    final rhythmSubtitle = aggregate.rhythmicSamples > 0
-        ? 'Across ${aggregate.rhythmicSamples} readings with a repeated rhythm'
+    final rhythmSubtitle = aggregate.rhythmicSamples == 1
+        ? 'From a single reading — not enough to call it a pattern'
+        : aggregate.rhythmicSamples > 0
+        ? 'Across ${_readings(aggregate.rhythmicSamples)} with a repeated rhythm'
         : likelyLegacyReading
         ? 'Older readings did not store today’s quality checks'
         : hasData

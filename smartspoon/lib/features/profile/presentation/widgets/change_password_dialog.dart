@@ -47,6 +47,46 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
     super.dispose();
   }
 
+  /// Sends a reset link to the signed-in address.
+  ///
+  /// Changing a password requires re-authenticating with the CURRENT one, so
+  /// without this the dialog is a dead end for exactly the person most likely
+  /// to open it — someone who has forgotten it. The email comes from the
+  /// signed-in user rather than a field, so this cannot be used to probe
+  /// whether some other address has an account.
+  Future<void> _sendResetEmail() async {
+    final email = FirebaseAuthService().currentUser?.email;
+    if (email == null || email.isEmpty) {
+      _toast('No email address is attached to this account.', ok: false);
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    final result = await FirebaseAuthService().resetPassword(email);
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+
+    final success = result['success'] == true;
+    _toast(
+      success
+          ? 'Reset link sent to $email. Open it, set a new password, then sign in again.'
+          : (result['message'] as String? ?? 'Could not send the reset email.'),
+      ok: success,
+    );
+    if (success && mounted) Navigator.of(context).pop();
+  }
+
+  void _toast(String message, {required bool ok}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message, style: AppTheme.sans(color: Colors.white)),
+        backgroundColor: ok ? AppTheme.sageDeep : AppTheme.paprika,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -150,7 +190,25 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
                 validator: _validateCurrentPassword,
                 enabled: !_isLoading,
               ),
-              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  onPressed: _isLoading ? null : _sendResetEmail,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Text(
+                    'Forgot your current password?',
+                    style: AppTheme.sans(
+                      color: AppTheme.caramel,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
               TextFormField(
                 controller: _newPasswordController,
                 obscureText: _obscureNew,
