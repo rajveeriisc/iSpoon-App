@@ -2,12 +2,11 @@
 
 import Image from "next/image";
 import { motion } from "framer-motion";
-import { Quote } from "lucide-react";
 
 const stats = [
-  { value: "94%", label: "of OTs who tested it recommended it to patients" },
-  { value: "800×/s", label: "motion samples per second in clinical conditions" },
-  { value: "3×", label: "fewer spills vs. standard weighted utensils" },
+  { value: "100 Hz", label: "motion sampling at the spoon tip" },
+  { value: "4–12 Hz", label: "tremor band the app analyses" },
+  { value: "6-axis", label: "accelerometer and gyroscope on every bite" },
 ];
 
 export default function DoctorTrust() {
@@ -22,14 +21,15 @@ export default function DoctorTrust() {
           transition={{ duration: 0.6 }}
           className="mx-auto max-w-2xl text-center"
         >
-          <span className="section-label">Clinically Validated</span>
+          <span className="section-label">Built With Clinicians</span>
           <h2 className="mt-5 font-serif text-4xl font-bold text-text-primary sm:text-5xl">
             Trusted by{" "}
             <span className="gradient-text">occupational therapists</span>
           </h2>
           <p className="mt-5 text-lg text-text-secondary">
-            i-Spoon was developed alongside occupational therapists and reviewed
-            by neurologists specialising in movement disorders.
+            i-Spoon was designed with input from occupational therapists. It is a
+            wellness and self-tracking tool — not a medical device, and not a
+            diagnostic instrument.
           </p>
         </motion.div>
 
@@ -53,25 +53,6 @@ export default function DoctorTrust() {
                 />
               </div>
             </div>
-
-            {/* Quote card overlay */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6, delay: 0.3 }}
-              className="absolute -bottom-6 -right-4 max-w-[260px] rounded-2xl border border-surface-border bg-surface-card p-5 shadow-2xl lg:-right-8"
-            >
-              <Quote className="h-5 w-5 text-amber mb-3" aria-hidden />
-              <p className="text-xs leading-relaxed text-text-secondary">
-                &ldquo;My patients get measurable, trackable improvement — and they
-                can actually see their progress in the app.&rdquo;
-              </p>
-              <p className="mt-3 text-xs font-semibold text-amber-light">
-                Dr. Sarah Jenkins, OTR/L
-              </p>
-              <p className="text-[10px] text-text-muted">Rehabilitation Services</p>
-            </motion.div>
           </motion.div>
 
           {/* RIGHT: Stats + copy */}

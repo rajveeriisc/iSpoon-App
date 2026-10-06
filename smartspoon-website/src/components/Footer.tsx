@@ -69,6 +69,13 @@ export default function Footer() {
         {/* Bottom bar */}
         <div className="mt-14 flex flex-col items-center justify-between gap-4 border-t border-surface-border pt-8 sm:flex-row">
           <p className="text-xs text-text-muted">
+            <span className="block max-w-3xl text-[11px] leading-relaxed text-text-muted">
+              i-Spoon is a wellness and self-tracking product. It is not a
+              medical device. It does not diagnose, treat, cure or prevent any
+              condition, and its measurements are not a clinical assessment.
+              Always talk to a qualified healthcare professional about symptoms
+              or treatment. Never change medication based on data from this app.
+            </span>
             © {year} i-Spoon Technologies. All rights reserved.
           </p>
           <div className="flex items-center gap-5">

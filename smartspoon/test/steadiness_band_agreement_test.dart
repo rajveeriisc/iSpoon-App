@@ -74,4 +74,30 @@ void main() {
       expect(indexBand(indexFor(pct)), pctBand(pct), reason: '$pct%');
     }
   });
+
+  // The Welch detector scores every window, including ones it decides are not
+  // rhythmic movement, so the UI always has a live number. Those undetected
+  // scores are capped, and the cap has to sit inside the "steady" band: the
+  // detector has already said there is nothing there, so no screen may render
+  // it as shake.
+  //
+  // The cap was the literal 0.59 while the low/moderate cut was 0.6. When the
+  // bands were re-derived from the steadiness percentages the cut moved to
+  // 0.30 and the stale cap started pushing undetected readings into the
+  // moderate band. It is now pinned to moderateThreshold.
+  group('an undetected reading never renders as shake', () {
+    test('the cap sits in the steady band', () {
+      expect(indexBand(TremorResult.moderateThreshold), 'steady');
+    });
+
+    test('the retired 0.59 literal would not have', () {
+      expect(indexBand(0.59), isNot('steady'));
+    });
+
+    test('every score up to the cap is steady', () {
+      for (final score in [0.0, 0.1, 0.2, 0.29, 0.30]) {
+        expect(indexBand(score), 'steady', reason: 'score $score');
+      }
+    });
+  });
 }

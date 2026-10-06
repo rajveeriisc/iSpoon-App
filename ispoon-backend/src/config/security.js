@@ -148,6 +148,23 @@ export const validateSecurityConfig = () => {
     throw new Error('DATABASE_URL is required');
   }
 
+  // Request-signing secret shared with the Flutter client. It used to fall back
+  // to a literal that was committed to a public repo, so production must now
+  // inject its own value and must not reuse the published one.
+  if (process.env.NODE_ENV === 'production') {
+    if (!process.env.HMAC_SECRET) {
+      throw new Error(
+        'HMAC_SECRET is required in production. Set it on the server and pass the '
+        + 'same value to the app build with --dart-define=HMAC_SECRET=...',
+      );
+    }
+    if (process.env.HMAC_SECRET === 'smartspoon_hmac_secret_2026') {
+      throw new Error(
+        'HMAC_SECRET is set to the publicly leaked development value. Choose a new secret.',
+      );
+    }
+  }
+
   return true;
 };
 

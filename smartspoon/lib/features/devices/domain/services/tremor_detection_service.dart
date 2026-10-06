@@ -737,7 +737,18 @@ class TremorDetectionService extends ChangeNotifier {
     final double ampWeight = ((amplitude - amplitudeFloor) / amplitudeRange)
         .clamp(0.0, 1.0);
     final rawScore = (baseScore * (0.5 + 0.5 * ampWeight)).clamp(0.0, 3.0);
-    final double score = detected ? rawScore : math.min(rawScore * 0.25, 0.59);
+    // An undetected reading must stay inside the "steady" band by
+    // construction: the detector has already said there is no qualifying
+    // rhythmic movement, so the screens must not label it "some shake".
+    //
+    // This cap used to be the literal 0.59, which worked only while the
+    // low/moderate boundary was 0.6. Once the bands were re-derived from the
+    // steadiness percentages (90% -> 0.30), an undetected reading scoring
+    // 0.31-0.59 started rendering as moderate. Pin the cap to the band cut so
+    // the two cannot drift apart again.
+    final double score = detected
+        ? rawScore
+        : math.min(rawScore * 0.25, TremorResult.moderateThreshold);
 
     return TremorResult(
       measured: true,

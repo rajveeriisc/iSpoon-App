@@ -7,7 +7,6 @@ import { Check, Shield, Truck, CreditCard, Clock } from "lucide-react";
 const guarantees = [
   { icon: Shield, label: "30-day money-back" },
   { icon: Truck,  label: "Free US shipping" },
-  { icon: CreditCard, label: "HSA / FSA eligible" },
   { icon: Clock,  label: "1-year warranty" },
 ];
 
@@ -41,7 +40,7 @@ export default function Pricing() {
           {/* Urgency banner */}
           <div className="bg-amber/10 border-b border-amber/15 px-8 py-3 text-center">
             <p className="text-xs font-semibold text-amber-light tracking-wide">
-              🔥 Launch pricing — save $50 · Only 23 units remaining at this price
+              Launch pricing — save $50
             </p>
           </div>
 
@@ -55,7 +54,6 @@ export default function Pricing() {
                 <span className="line-through">{pricing.originalPrice}</span> launch price
               </p>
               <p className="mt-3 text-xs text-text-muted">
-                or 3 × $83/mo with Shop Pay
               </p>
 
               <div className="mt-8 flex flex-col gap-3">

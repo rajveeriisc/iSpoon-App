@@ -8,6 +8,7 @@
 // tunnelBypassHeaders() adds ngrok skip-warning headers whenever the API
 // host is ngrok (debug and release Desktop APKs).
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import '../config/app_config.dart';
@@ -25,7 +26,34 @@ import '../config/app_config.dart';
 class ResilientHttp {
   ResilientHttp._();
 
-  static const String _hmacSecret = 'smartspoon_hmac_secret_2026';
+  /// Request-signing secret, shared with the backend's verifyHmac middleware.
+  ///
+  /// Injected at build time so it is not a source-code constant:
+  ///   flutter build apk --dart-define=HMAC_SECRET=...
+  /// and the same value must be set as HMAC_SECRET on the server, which
+  /// refuses to boot in production without it.
+  ///
+  /// Note this is only defence in depth. Anything compiled into the app can be
+  /// read back out of the APK, so a shared static secret cannot authenticate a
+  /// client; the bearer token checked by `protect` is what actually does.
+  ///
+  /// The fallback is the well-known development value, kept so local debug
+  /// builds work against a dev server without extra flags. It is deliberately
+  /// NOT used in release: a release build with no secret configured would
+  /// otherwise sign every request with a value published in a public repo.
+  static const String _devFallbackSecret = 'smartspoon_hmac_secret_2026';
+
+  static const String _hmacSecretFromEnv = String.fromEnvironment('HMAC_SECRET');
+
+  static String get _hmacSecret {
+    if (_hmacSecretFromEnv.isNotEmpty) return _hmacSecretFromEnv;
+    assert(
+      kDebugMode,
+      'HMAC_SECRET was not provided at build time. Pass '
+      '--dart-define=HMAC_SECRET=<value matching the server> for release builds.',
+    );
+    return _devFallbackSecret;
+  }
 
   static Map<String, String> _signRequest(Object? body, Map<String, String>? headers) {
     final signedHeaders = headers == null ? <String, String>{} : Map<String, String>.from(headers);

@@ -3,7 +3,7 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import "./globals.css";
 
 export const SITE_DESCRIPTION =
-  "The i-Spoon provides precision tremor tracking and mealtime analytics, so people with Parkinson's, essential tremor, and MS can gain objective insights into their symptoms. High-resolution 100Hz measurement.";
+  "The i-Spoon provides precision tremor tracking and mealtime analytics, giving people living with hand tremor a record of their own steadiness over time. 100Hz motion measurement. Not a medical device.";
 
 export const metadata: Metadata = {
   title: "i-Spoon — Eat Steady, Live Independent",
@@ -20,7 +20,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "i-Spoon — Eat Steady, Live Independent",
     description:
-      "Precision tremor tracking and mealtime analytics so you and your doctor can see the real picture. Built for Parkinson's, essential tremor, and MS.",
+      "Hand-steadiness and mealtime tracking you can review yourself or bring to an appointment. A wellness device, not a medical device.",
     type: "website",
     locale: "en_US",
     siteName: "i-Spoon",

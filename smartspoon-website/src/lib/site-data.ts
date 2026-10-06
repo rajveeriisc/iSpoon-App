@@ -2,7 +2,6 @@ export const nav = [
   { label: "How it works", href: "#how-it-works" },
   { label: "Features", href: "#features" },
   { label: "App", href: "#app" },
-  { label: "Stories", href: "#stories" },
   { label: "Pricing", href: "#pricing" },
   { label: "FAQ", href: "#faq" },
 ];
@@ -10,7 +9,7 @@ export const nav = [
 export const heroStats = [
   { value: "100Hz", label: "high-resolution tremor measurement" },
   { value: "10M+", label: "people live with hand tremor worldwide" },
-  { value: "5 hrs", label: "battery life per charge" },
+  { value: "4–12 Hz", label: "tremor band the app analyses" },
 ];
 
 export const howItWorks = [
@@ -60,39 +59,16 @@ export const features = [
 ];
 
 export const impactStats = [
-  { value: "85%", label: "of users shared insights with their doctor" },
+  { value: "6-axis", label: "accelerometer + gyroscope motion sensing" },
   { value: "100Hz", label: "sampling rate for precise tremor tracking" },
-  { value: "40k+", label: "meals logged through the i-Spoon app" },
-];
-
-export const testimonials = [
-  {
-    quote:
-      "I used to guess how bad my tremors were when talking to my doctor. Now I just open the app and show her the actual data from the last month.",
-    name: "Margaret R.",
-    detail: "Essential tremor, using i-Spoon for 8 months",
-  },
-  {
-    quote:
-      "The app shows my tremor trending down since I started my new medication. It's incredibly validating to see the numbers prove how I feel.",
-    name: "David K.",
-    detail: "Parkinson's, using i-Spoon for 1 year",
-  },
-  {
-    quote:
-      "I can log into the app and see that my mother ate her meals today, and how her steadiness score was. It gives me peace of mind when I can't be there.",
-    name: "Priya S.",
-    detail: "Caregiver",
-  },
+  { value: "BLE 5.0", label: "low-energy link to your phone" },
 ];
 
 export const trustBadges = [
   "30-Day Money-Back Guarantee",
   "Free US Shipping",
   "1-Year Limited Warranty",
-  "HSA / FSA Eligible",
   "Designed With Occupational Therapists",
-  "24/7 Customer Support",
 ];
 
 export const comparisonPoints = [
@@ -161,8 +137,8 @@ export const moreFeatures = [
   },
   {
     icon: "Sparkles",
-    title: "Cloud Firestore Backup",
-    body: "Your tremor data is securely backed up to the cloud for continuous access across devices.",
+    title: "Secure Cloud Sync",
+    body: "Your meals and motion history sync to your private account so they survive a lost or replaced phone.",
   },
 ];
 
@@ -170,7 +146,7 @@ export const specs = [
   { label: "Weight", value: "115g (balanced for grip assistance)" },
   { label: "Battery", value: "Rechargeable Li-Ion" },
   { label: "Connectivity", value: "Bluetooth Low Energy 5.0" },
-  { label: "Pro Feature", value: "Active Food Heater (30–95°C)" },
+  { label: "Pro Feature", value: "Active Food Heater (30–70°C)" },
   { label: "Materials", value: "Food-grade stainless steel & silicone" },
   { label: "Data sampling", value: "100Hz Welch PSD" },
   { label: "Warranty", value: "1-year limited" },
@@ -202,7 +178,7 @@ export const appScreens = [
     rows: [
       { label: "Best day", detail: "Tuesdays · avg. 95 score" },
       { label: "Avg. meal time", detail: "11 min, down from 19" },
-      { label: "Spill events", detail: "2 this month, down from 14" },
+      { label: "Bites logged", detail: "412 this month" },
     ],
   },
   {
@@ -251,11 +227,11 @@ export const newsletter = {
 export const faqs = [
   {
     q: "Who is i-Spoon designed for?",
-    a: "Anyone living with hand tremor that makes eating difficult — including essential tremor, Parkinson's disease, multiple sclerosis, and post-stroke tremor.",
+    a: "People who want to track hand steadiness and eating patterns at mealtimes. i-Spoon measures and logs motion — it does not diagnose, treat, or reduce tremor, and it is not a substitute for care from your clinician.",
   },
   {
     q: "How long does the battery last?",
-    a: "Roughly 5 hours of active use per charge — typically more than a full day of meals. The magnetic dock fully recharges it in under 90 minutes.",
+    a: "A full charge is designed to cover a day of meals. We will publish measured runtime figures before shipping.",
   },
   {
     q: "Is the spoon head dishwasher safe?",
@@ -267,13 +243,13 @@ export const faqs = [
   },
   {
     q: "Does insurance cover i-Spoon?",
-    a: "Coverage varies by plan. We provide an itemized receipt and HSA/FSA-eligible documentation at checkout.",
+    a: "i-Spoon is a wellness and self-tracking device, not a medical device, so it is generally not reimbursable. We provide an itemized receipt on request.",
   },
 ];
 
 export const footer = {
   tagline:
-    "Objective tremor tracking and mealtime analytics so you and your doctor can see the real picture.",
+    "Hand-steadiness and mealtime tracking you can review yourself or bring to an appointment.",
   social: [
     { label: "Instagram", href: "#" },
     { label: "Facebook", href: "#" },
@@ -302,7 +278,7 @@ export const footer = {
       heading: "Company",
       links: [
         { label: "About us", href: "#" },
-        { label: "Clinical evidence", href: "#science" },
+        { label: "The technology", href: "#science" },
         { label: "For clinicians", href: "#" },
         { label: "Press kit", href: "#" },
       ],

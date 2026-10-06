@@ -43,7 +43,7 @@ export default function CTA() {
           </div>
 
           <p className="mt-6 text-xs text-text-muted">
-            30-day money-back · Free US shipping · HSA/FSA eligible
+            30-day money-back · Free US shipping
           </p>
         </motion.div>
       </div>

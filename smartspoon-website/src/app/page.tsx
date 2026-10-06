@@ -8,7 +8,6 @@ import VideoDemo from "@/components/VideoDemo";
 import ImpactStats from "@/components/ImpactStats";
 import DoctorTrust from "@/components/DoctorTrust";
 import SavoraAppScreens from "@/components/SavoraAppScreens";
-import Testimonials from "@/components/Testimonials";
 import Caregiver from "@/components/Caregiver";
 import Pricing from "@/components/Pricing";
 import FAQ from "@/components/FAQ";
@@ -37,7 +36,6 @@ export default function Home() {
         <ImpactStats />
         <DoctorTrust />
         <SavoraAppScreens />
-        <Testimonials />
         <Caregiver />
         <Pricing />
         <FAQ />
