@@ -2,7 +2,10 @@
 //
 // Pure Dart (no Flutter), so the whole pipeline can be replayed from a CSV in
 // a test exactly as it runs on the phone.
+import 'dart:collection';
+
 import 'package:smartspoon/features/ai_lab/domain/engine/ai_lab_model.dart';
+import 'package:smartspoon/features/ai_lab/domain/engine/bite_cycle_tracker.dart';
 import 'package:smartspoon/features/ai_lab/domain/engine/bite_detector.dart';
 import 'package:smartspoon/features/ai_lab/domain/engine/bite_features.dart';
 import 'package:smartspoon/features/ai_lab/domain/engine/handedness.dart';
@@ -12,7 +15,12 @@ import 'package:smartspoon/features/ai_lab/domain/engine/steadiness_analyzer.dar
 
 /// What one [EatingEngine.feed] call changed.
 class EngineUpdate {
-  const EngineUpdate({this.bite, this.window, this.decidedHand});
+  const EngineUpdate({
+    this.bite,
+    this.window,
+    this.decidedHand,
+    this.cycleOutcomes = const [],
+  });
 
   static const none = EngineUpdate();
 
@@ -20,7 +28,15 @@ class EngineUpdate {
   final SteadinessResult? window;
   final Hand? decidedHand;
 
-  bool get changed => bite != null || window != null || decidedHand != null;
+  /// Cycle verdicts that resolved on this sample. In shadow mode these are
+  /// informational only — the bite was already counted.
+  final List<BiteCycleOutcome> cycleOutcomes;
+
+  bool get changed =>
+      bite != null ||
+      window != null ||
+      decidedHand != null ||
+      cycleOutcomes.isNotEmpty;
 }
 
 class EatingEngine {
@@ -32,6 +48,7 @@ class EatingEngine {
         tracker = tracker ?? MealTracker() {
     _detector = BiteDetector(model: model, voter: this.voter);
     _steadiness = SteadinessAnalyzer(model.steadiness);
+    _cycle = BiteCycleTracker(model.biteCycle);
   }
 
   final AiLabModel model;
@@ -40,6 +57,34 @@ class EatingEngine {
   final ImuWindow _window = ImuWindow();
   late final BiteDetector _detector;
   late final SteadinessAnalyzer _steadiness;
+  late final BiteCycleTracker _cycle;
+
+  /// Where in the eating cycle the spoon is, for the live phase chip.
+  /// Distinct from `tracker.phase`, which is the MEAL phase.
+  BitePhase get cyclePhase => _cycle.phase;
+
+  /// Absolute excursion from the learned resting pose, degrees.
+  double get excursionDeg => _cycle.deltaDeg;
+
+  /// True once the per-meal plate reference has converged.
+  bool get calibrated => _cycle.plateReady;
+
+  /// This person's running typical bite excursion, degrees. Null until the
+  /// first qualifying dwell.
+  double? get excursionReferenceDeg => _cycle.excursionReferenceDeg;
+
+  /// The excursion a dwell must reach right now to count.
+  double get effectiveDeltaMinDeg => _cycle.effectiveDeltaMinDeg;
+
+  /// Resolved cycle verdicts this meal, oldest first.
+  List<BiteCycleOutcome> get cycleLog => _cycle.log;
+
+  /// Proposals held back waiting on a verdict, keyed by proposal index.
+  /// Only populated when [BiteCycleConfig.enforce] is true.
+  final Map<int, BiteEvent> _held = {};
+
+  /// Accepted bites waiting to be reported, at most one per fed sample.
+  final Queue<BiteEvent> _ready = Queue();
 
   /// Rhythmic flags of the last three steadiness windows, for per-bite colour.
   final List<bool> _recentWindows = [];
@@ -70,9 +115,13 @@ class EatingEngine {
         tsMs: tsMs, ax: ax, ay: ay, az: az, gx: gx, gy: gy, gz: gz)) {
       _detector.reset();
       _steadiness.reset();
+      _cycle.reset();
       _recentWindows.clear();
+      _held.clear();
+      _ready.clear();
       _segmentStart = row;
     }
+    _cycle.add(_window, _window.newest);
 
     final window = _steadiness.add(gx, gy, gz);
     if (window != null) {
@@ -98,19 +147,55 @@ class EatingEngine {
         detectedRows.add(_segmentStart + hit.t);
         decided = hit.decidedHand;
         final rhythmic = _recentWindows.where((r) => r).length;
-        bite = BiteEvent(
+        final proposed = BiteEvent(
           time: DateTime.fromMillisecondsSinceEpoch(_window.timestampMs(hit.t)),
           probability: hit.probability,
           rhythmicShare:
               _recentWindows.isEmpty ? 0 : rhythmic / _recentWindows.length,
         );
+        final verdict = _cycle.propose(hit.t);
+
+        if (!model.biteCycle.enforce) {
+          // Shadow mode: count exactly as before, immediately. The verdict is
+          // logged when it resolves and changes nothing, latency included.
+          bite = proposed;
+          tracker.onBite(proposed);
+        } else if (verdict == null) {
+          // Deferred — the cycle has not come back yet.
+          _held[hit.t] = proposed;
+        } else if (verdict.accepted) {
+          bite = proposed;
+          tracker.onBite(proposed);
+        }
+      }
+    }
+
+    // Verdicts that landed on this sample. When enforcing, an accepted one
+    // releases the bite it was holding.
+    final outcomes = _cycle.drainResolved();
+    if (model.biteCycle.enforce) {
+      for (final o in outcomes) {
+        final heldBite = _held.remove(o.t);
+        if (heldBite != null && o.accepted) _ready.add(heldBite);
+      }
+      if (bite == null && _ready.isNotEmpty) {
+        bite = _ready.removeFirst();
         tracker.onBite(bite);
       }
     }
-    if (bite == null && window == null && decided == null) {
+
+    if (bite == null &&
+        window == null &&
+        decided == null &&
+        outcomes.isEmpty) {
       return EngineUpdate.none;
     }
-    return EngineUpdate(bite: bite, window: window, decidedHand: decided);
+    return EngineUpdate(
+      bite: bite,
+      window: window,
+      decidedHand: decided,
+      cycleOutcomes: outcomes,
+    );
   }
 
   /// Advances meal timeouts; returns a meal that just ended.
@@ -125,7 +210,10 @@ class EatingEngine {
     _window.clear();
     _detector.reset();
     _steadiness.reset();
+    _cycle.reset();
     _recentWindows.clear();
+    _held.clear();
+    _ready.clear();
     _segmentStart = _fed;
   }
 }

@@ -47,3 +47,15 @@ AiLabModel loadModel() =>
 
 void feedRow(EatingEngine e, FixtureRow s) => e.feed(
     tsMs: s.ts, ax: s.ax, ay: s.ay, az: s.az, gx: s.gx, gy: s.gy, gz: s.gz);
+
+/// Like [feedRow] but hands back what the engine reported, for tests that
+/// need to count emitted bites rather than just drive the stream.
+EngineUpdate feedRowUpdate(EatingEngine e, FixtureRow s) => e.feed(
+      tsMs: s.ts,
+      ax: s.ax,
+      ay: s.ay,
+      az: s.az,
+      gx: s.gx,
+      gy: s.gy,
+      gz: s.gz,
+    );

@@ -1,7 +1,9 @@
 # Bite cycle validation — design
 
 **Date:** 2026-10-02
-**Status:** approved; revised 2026-10-02 after spec review (10 findings, 9 acted on)
+**Status:** implemented 2026-10-06, shipping dark. Approved 2026-10-02; revised
+after spec review (10 findings, 9 acted on) and again after implementation —
+see "What the real meals changed" at the end.
 **Problem owner:** false-positive bites reported on real use
 
 ## Problem
@@ -338,3 +340,106 @@ tested on synthetic traces alone.
   tracking the actual resting pose.
 - **Threshold drift.** Values in JSON with code defaults; a test asserts the
   code does not re-hardcode them.
+
+---
+
+## What the real meals changed (2026-10-06, implementation)
+
+The design was written from the geometry of a spoon trip. Replaying it against
+the two labelled meals in `test/fixtures/ai_lab` immediately contradicted it:
+the brisk eater kept 19 of 19 bites, and the gentle eater **lost 11 of 21**.
+All five changes below came out of that measurement.
+
+### 1. `idle -> lift` needs motion, not just excursion
+
+As specified the transition was `delta >= deltaRiseDeg` alone, so a spoon
+simply **set down at a new angle** read as a permanent lift: it entered `lift`,
+timed out, re-entered on the next sample, and plate learning — gated on no
+cycle being in progress — never got the still samples it needs to adopt the new
+pose. The reference stayed wrong for the rest of the meal, which is the exact
+failure the learned reference exists to avoid.
+
+Now also requires `gyro > stillGyroDps`. Gated on the stillness threshold
+rather than `sustainedGyroDps` so a gentle lift still qualifies; it only has to
+separate "moving" from "sitting there".
+
+### 2. `load -> lift` asks whether a swing happened recently, not right now
+
+Requiring `delta >= deltaRiseDeg` AND `gyro >= sustainedGyroDps` on the **same
+sample** was brittle. In a slower lift the two conditions pass each other, and
+the machine never leaves `load`: measured occupancy was 43% of the meal in
+`load` for the gentle eater against 26% for the brisk one. The rotation test is
+now a recency check over `liftTimeoutMs`.
+
+### 3. The mouth window has to be asymmetric — `mouthLagSamples`
+
+The biggest single cause. A dwell can only be **confirmed** `dwellMs` after it
+begins, and a gentle eater decelerates slowly, so the machine enters `mouth`
+well after the kinematic moment the model fired on. Measured signed lag:
+
+| eater | slack needed |
+|---|---|
+| brisk | 4 samples |
+| gentle | up to 159 samples |
+
+Against the specified symmetric `mouthWindowSamples = 60`, 9 of the gentle
+eater's proposals were rejected `noMouthNearProposal` — while the tracker had
+in fact found 22 mouth dwells for ~20 real bites. The machine was right and the
+acceptance rule was wrong.
+
+Acceptance now measures against the whole dwell **span**, with
+`mouthLagSamples = 200` after the proposal and `mouthWindowSamples = 60`
+before it. `propose` therefore has to be able to **defer with no cycle bound
+at all**, waiting for a dwell that has not been confirmed yet.
+
+### 4. The dwell mean is measured only inside `mouth`
+
+It was accumulated from the moment gyro fell below `dwellGyroDps`, i.e. part
+way through the lift. A brisk eater decelerates fast enough that it barely
+mattered; a gentle one coasts down over several hundred milliseconds, and
+averaging that rising tail in dragged the dwell mean to 19-28 degrees against a
+true hold nearer 45.
+
+### 5. `deltaMinDeg` is a floor; the real test is per person
+
+The core mistake was a single absolute angle for everybody. Measured dwell-mean
+excursion:
+
+| eater | min | median | max | learned reference |
+|---|---|---|---|---|
+| brisk | 48.6 | 54.3 | 57.8 | 54.8 |
+| gentle | 18.7 | 43.6 | 55.0 | 44.4 |
+
+`deltaMinDeg = 40` passed all 19 brisk bites and rejected 10 of 21 gentle ones.
+So the threshold is now
+`max(deltaMinDeg, reference * excursionFraction)`, where the reference is an
+EMA (`excursionRefTauCycles = 8`) of this person's dwell excursions, learned
+exactly as `grav_plate` is and for exactly the same reason.
+
+`deltaMinDeg` drops to **25**, now meaning "not a bite for anybody" — set from
+the separation actually measured against the motions being rejected (a wrist
+wiggle peaks near 10 degrees, stirring near 8). `excursionFraction = 0.5` was
+chosen from a sweep: 0.60 gave 16/21, 0.50 gave 18/21, and below 0.50 nothing
+improved because the absolute floor binds instead.
+
+The reference is only updated from dwells that clear the floor, so stirring and
+fidgeting cannot drag it down, and it is updated **after** the verdict so a
+dwell is never graded against itself.
+
+### Where it stands
+
+| eater | proposals | accepted | rejected |
+|---|---|---|---|
+| brisk | 19 | 19 | — |
+| gentle | 21 | 18 | 3 x `noExcursion` |
+
+The gentle eater's replay golden is 18-22 bites, so 18 is inside it. The three
+rejected dwells measure roughly 0, 16 and 24 degrees against that person's
+44 degree typical, and may well be genuine false positives — the gate's whole
+purpose. There is no way to tell from two meals.
+
+**`enforce` stays false.** Two labelled meals is not a tuning set, and one of
+them had to be rescued three times during implementation. The thresholds are
+guarded by `test/ai_lab/bite_cycle_config_test.dart`, which fails if either
+eater regresses.
+
