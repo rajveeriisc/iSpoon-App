@@ -45,6 +45,12 @@ DEFINES=(
 
 COMMON=(--release --obfuscate --split-debug-info=./build/debug-info "${DEFINES[@]}")
 
+# Which artifacts to build. Default is everything; TARGETS lets you ask for
+# just the APK when you only need something installable to test with, e.g.
+#   TARGETS=apk API_BASE_URL=... HMAC_SECRET=... ./scripts/build_release.sh
+TARGETS="${TARGETS:-apk,appbundle,ipa}"
+wants() { case ",$TARGETS," in *",$1,"*) return 0;; *) return 1;; esac; }
+
 echo "Building SmartSpoon for Production (Obfuscated)..."
 echo "  API_BASE_URL = $API_BASE_URL"
 echo "  HMAC_SECRET  = (${#HMAC_SECRET} chars, not echoed)"
@@ -52,18 +58,24 @@ echo "  HMAC_SECRET  = (${#HMAC_SECRET} chars, not echoed)"
 # Ensure dependencies are up to date
 flutter pub get
 
-# Build Android APK and AppBundle
-echo "Building Android APK..."
-flutter build apk "${COMMON[@]}"
-echo "Building Android AppBundle..."
-flutter build appbundle "${COMMON[@]}"
+# Build Android artifacts
+if wants apk; then
+  echo "Building Android APK..."
+  flutter build apk "${COMMON[@]}"
+fi
+if wants appbundle; then
+  echo "Building Android AppBundle..."
+  flutter build appbundle "${COMMON[@]}"
+fi
 
 # Build iOS IPA (Requires macOS environment with Xcode)
-if [ "$(uname)" == "Darwin" ]; then
-  echo "Building iOS IPA..."
-  flutter build ipa "${COMMON[@]}"
-else
-  echo "Skipping iOS build (not on macOS)."
+if wants ipa; then
+  if [ "$(uname)" == "Darwin" ]; then
+    echo "Building iOS IPA..."
+    flutter build ipa "${COMMON[@]}"
+  else
+    echo "Skipping iOS build (not on macOS)."
+  fi
 fi
 
 echo "Build complete! Debug info saved to ./build/debug-info. Store this safely for symbolication."
