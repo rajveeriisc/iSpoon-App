@@ -7,6 +7,10 @@
 import 'dart:math' as math;
 
 const double kMindfulGapSec = 10.0;
+
+/// A gap this long or longer counts as a pause rather than slow eating.
+/// Shared so the live card and the saved meal report cannot drift apart.
+const double kPauseGapSec = 60.0;
 const double kShakyBelowPct = 75.0;
 const double kSteadyFromPct = 90.0;
 
@@ -97,7 +101,7 @@ class MealMetrics {
           : null,
       gapCv: cv,
       speedChange: speed,
-      pauses: gaps.where((g) => g >= 60).length,
+      pauses: gaps.where((g) => g >= kPauseGapSec).length,
       steadyPct: steadyPctOf(windows, rhythmicWindows),
       rhythmHz: rhythmHz,
     );
