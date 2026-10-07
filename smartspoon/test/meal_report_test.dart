@@ -231,4 +231,128 @@ void main() {
     expect(r.moments[2].tempC, 50.0);
     expect(r.moments[2].steadyPct, 70.0);
   });
+
+  // ── research-grounded microstructure ──────────────────────────────────────
+  //
+  // The cumulative-intake model is Kissileff/Thornton/Becker's quadratic
+  // I = a + b*t + c*t^2, where b is the starting eating rate and 2c is the
+  // rate at which that rate changes. Negative 2c is the satiation signature.
+  group('cumulative intake curve', () {
+    test('even gaps give a straight line: no acceleration, near-perfect fit', () {
+      // A bite every 10 s is 6 bites/min, and the rate never changes.
+      final r = reportOf([for (var i = 0; i < 12; i++) i * 10.0]);
+      final f = r.intakeCurve!;
+      expect(f.initialRate, closeTo(6.0, 0.3));
+      expect(f.acceleration, closeTo(0.0, 0.3));
+      expect(f.rSquared, greaterThan(0.99));
+      expect(f.isTrustworthy, isTrue);
+      expect(f.showsSatiation, isFalse);
+    });
+
+    test('lengthening gaps read as slowing down — the satiation signature', () {
+      // Gaps grow 5,6,7,... so the curve bends over.
+      final offs = <double>[0];
+      var g = 5.0;
+      for (var i = 0; i < 11; i++) { offs.add(offs.last + g); g += 2.0; }
+      final f = reportOf(offs).intakeCurve!;
+      expect(f.acceleration, lessThan(0.0));
+      expect(f.isTrustworthy, isTrue);
+      expect(f.showsSatiation, isTrue);
+    });
+
+    test('shortening gaps read as speeding up', () {
+      final offs = <double>[0];
+      var g = 26.0;
+      for (var i = 0; i < 11; i++) { offs.add(offs.last + g); g -= 2.0; }
+      final f = reportOf(offs).intakeCurve!;
+      expect(f.acceleration, greaterThan(0.0));
+      expect(f.showsSatiation, isFalse);
+    });
+
+    test('a meal that speeds up then slows down is reported as untrustworthy', () {
+      // A quadratic has one sign of curvature, so it cannot describe this.
+      // The point of rSquared is to stop us presenting the coefficient anyway.
+      final offs = <double>[0];
+      for (final g in [20.0, 16, 12, 8, 4, 4, 8, 12, 16, 20, 24]) {
+        offs.add(offs.last + g);
+      }
+      final f = reportOf(offs).intakeCurve!;
+      expect(f.rSquared, lessThan(0.99));
+    });
+
+    test('too few bites to fit three coefficients', () {
+      expect(reportOf([0, 10, 20, 30]).intakeCurve, isNull);
+    });
+  });
+
+  group('eating bouts', () {
+    test('a long break splits the meal into two bouts', () {
+      final r = reportOf([0, 8, 16, 24, 200, 208, 216]);
+      expect(r.bouts, hasLength(2));
+      expect(r.bouts.first.bites, 4);
+      expect(r.bouts.last.bites, 3);
+      expect(r.bouts.first.firstBite, 1);
+      expect(r.bouts.last.lastBite, 7);
+    });
+
+    test('an uninterrupted meal is one bout', () {
+      final r = reportOf([for (var i = 0; i < 10; i++) i * 9.0]);
+      expect(r.bouts, hasLength(1));
+      expect(r.bouts.single.bites, 10);
+    });
+
+    test('the threshold calibrates to the eater, not a fixed 5 s', () {
+      // A slow eater on 30 s gaps must not have every bite called a bout.
+      final slow = reportOf([for (var i = 0; i < 8; i++) i * 30.0]);
+      expect(slow.bouts, hasLength(1),
+          reason: '30 s gaps are this person\'s normal, not breaks');
+      // A fast eater on 4 s gaps: a 25 s gap IS a break for them.
+      final fast = reportOf([0, 4, 8, 12, 37, 41, 45]);
+      expect(fast.bouts, hasLength(2));
+    });
+  });
+
+  group('active pace excludes time not spent eating', () {
+    test('a long break does not make someone a slow eater', () {
+      // 8 bites over ~9 min, but 5 of those minutes were a single pause.
+      final offs = <double>[0, 10, 20, 30, 330, 340, 350, 360];
+      final r = reportOf(offs);
+      expect(r.pauses, hasLength(1));
+      expect(r.activeBitesPerMin, isNotNull);
+      expect(r.activeBitesPerMin!, greaterThan(r.bitesPerMin!),
+          reason: 'removing the pause raises the real eating rate');
+    });
+
+    test('with no pauses it agrees with the wall-clock rate', () {
+      final r = reportOf([for (var i = 0; i < 10; i++) i * 10.0]);
+      expect(r.activeBitesPerMin!, closeTo(r.bitesPerMin!, 0.01));
+    });
+  });
+
+  group('trends through the meal', () {
+    test('cooling is reported as a positive rate', () {
+      // 60 C down to 48 C over 2 minutes = 6 C/min.
+      final r = reportOf([0, 30, 60, 90, 120],
+          temps: [60.0, 57.0, 54.0, 51.0, 48.0]);
+      expect(r.coolingRateCPerMin!, closeTo(6.0, 0.2));
+    });
+
+    test('food warming up is not reported as cooling', () {
+      final r = reportOf([0, 30, 60, 90],
+          temps: [40.0, 44.0, 48.0, 52.0]);
+      expect(r.coolingRateCPerMin!, lessThan(0.0));
+    });
+
+    test('a hand getting less steady gives a negative slope', () {
+      final r = reportOf([0, 60, 120, 180],
+          steady: [100.0, 90.0, 80.0, 70.0]);
+      expect(r.steadinessSlopePctPerMin!, closeTo(-10.0, 0.5));
+    });
+
+    test('slopes need at least three readings', () {
+      expect(reportOf([0, 30], temps: [60.0, 50.0]).coolingRateCPerMin, isNull);
+      expect(reportOf([0, 30], steady: [90.0, 80.0]).steadinessSlopePctPerMin,
+          isNull);
+    });
+  });
 }

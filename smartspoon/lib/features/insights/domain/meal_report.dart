@@ -91,6 +91,71 @@ class BiteMoment {
   final double? tremorIndex;
 }
 
+
+/// A least-squares fit of cumulative bites against time, following the model
+/// Kissileff, Thornton and Becker established for cumulative intake curves:
+///
+///     I(t) = a + b*t + c*t^2
+///
+/// [initialRate] is b, the eating rate at the start of the meal.
+/// [acceleration] is 2c, the rate at which the eating rate itself changes —
+/// negative means the person slowed as the meal went on, which is the
+/// signature of satiation. Positive means they sped up.
+///
+/// IMPORTANT, two honest limits:
+///
+///  1. The original model fits intake by WEIGHT. This fits bite COUNT, which
+///     is only a proxy for intake and assumes roughly even bite sizes. The
+///     spoon cannot weigh food, so this is the closest available measure, not
+///     the same measure.
+///  2. A quadratic has one fixed sign of curvature, so it cannot represent a
+///     meal that sped up and then slowed down. [rSquared] is reported for
+///     exactly this reason: a coefficient from a poor fit means nothing, and
+///     callers should not present one without checking [isTrustworthy].
+class IntakeCurveFit {
+  const IntakeCurveFit({
+    required this.initialRate,
+    required this.acceleration,
+    required this.rSquared,
+    required this.samples,
+  });
+
+  /// Bites per minute at t = 0.
+  final double initialRate;
+
+  /// Change in bites/min per minute. Negative = slowing down.
+  final double acceleration;
+
+  /// Share of variance explained, 0–1.
+  final double rSquared;
+  final int samples;
+
+  /// The original work reported 97–99% of variance explained. Well below
+  /// that, the curvature is not describing this meal.
+  bool get isTrustworthy => rSquared >= 0.90 && samples >= 6;
+
+  /// Negative acceleration on a fit worth believing.
+  bool get showsSatiation => isTrustworthy && acceleration < 0;
+}
+
+/// A run of bites with no long break in it.
+class EatingBout {
+  const EatingBout({
+    required this.firstBite,
+    required this.lastBite,
+    required this.start,
+    required this.end,
+  });
+
+  final int firstBite;
+  final int lastBite;
+  final DateTime start;
+  final DateTime end;
+
+  int get bites => lastBite - firstBite + 1;
+  Duration get duration => end.difference(start);
+}
+
 /// A finished meal, described from its own stored bites.
 class MealReport {
   const MealReport({
@@ -108,6 +173,11 @@ class MealReport {
     this.firstHalfSteadyPct,
     this.secondHalfSteadyPct,
     this.temperature,
+    this.intakeCurve,
+    this.bouts = const [],
+    this.activeBitesPerMin,
+    this.steadinessSlopePctPerMin,
+    this.coolingRateCPerMin,
   });
 
   /// Builds a report from the meal row and its bites.
@@ -189,6 +259,11 @@ class MealReport {
       meanSteadyPct: _mean(steadies),
       firstHalfSteadyPct: _halfMean(steadies, first: true),
       secondHalfSteadyPct: _halfMean(steadies, first: false),
+      intakeCurve: _fitIntakeCurve(moments),
+      bouts: _findBouts(moments, gaps),
+      activeBitesPerMin: _activeRate(valid.length, durationMin, pauses),
+      steadinessSlopePctPerMin: _steadinessSlope(moments),
+      coolingRateCPerMin: _coolingRate(moments),
       temperature: temps.length >= 2
           ? TemperatureTrace(
               firstC: temps.first,
@@ -230,6 +305,32 @@ class MealReport {
   /// Null when fewer than two bites carried a temperature reading.
   final TemperatureTrace? temperature;
 
+  /// Cumulative-intake fit. Null when there were too few bites to fit three
+  /// coefficients at all.
+  final IntakeCurveFit? intakeCurve;
+
+  /// Runs of bites with no long break between them.
+  final List<EatingBout> bouts;
+
+  /// Pace counting only time spent actually eating — pause time removed.
+  ///
+  /// More accurate than [bitesPerMin] for someone who stopped mid-meal: a
+  /// 20-bite meal with a ten-minute break in it is not a slow eater, but
+  /// dividing by wall-clock duration says it is.
+  final double? activeBitesPerMin;
+
+  /// Change in steadiness per minute across the meal. Negative means the
+  /// hand grew less steady as the meal went on.
+  final double? steadinessSlopePctPerMin;
+
+  /// How fast the food cooled, degrees Celsius per minute.
+  ///
+  /// A straight line over the readings. Newton's law of cooling is
+  /// exponential, but fitting three parameters to a handful of noisy
+  /// per-bite readings would invent precision that is not there; the average
+  /// rate over the meal is what the data supports.
+  final double? coolingRateCPerMin;
+
   int get biteCount => moments.length;
 
   /// Ratio of second-half to first-half gaps, matching
@@ -268,6 +369,154 @@ class MealReport {
   bool get isReportable => biteCount >= 3;
 
   // ── helpers ──────────────────────────────────────────────────────────────
+
+
+  /// Least squares on I(t) = a + b*t + c*t^2 via the normal equations,
+  /// solved with Cramer's rule on the 3x3 system.
+  static IntakeCurveFit? _fitIntakeCurve(List<BiteMoment> m) {
+    // Three coefficients need more than three points to mean anything.
+    if (m.length < 5) return null;
+    final t = [for (final x in m) x.sinceStart.inMilliseconds / 60000.0];
+    final y = [for (var i = 0; i < m.length; i++) (i + 1).toDouble()];
+    if (t.last <= 0) return null;
+
+    double sum(List<double> v) => v.reduce((a, b) => a + b);
+    final n = m.length.toDouble();
+    final t1 = sum(t);
+    final t2 = sum([for (final x in t) x * x]);
+    final t3 = sum([for (final x in t) x * x * x]);
+    final t4 = sum([for (final x in t) x * x * x * x]);
+    final y0 = sum(y);
+    final y1 = sum([for (var i = 0; i < t.length; i++) t[i] * y[i]]);
+    final y2 = sum([for (var i = 0; i < t.length; i++) t[i] * t[i] * y[i]]);
+
+    double det3(List<List<double>> a) =>
+        a[0][0] * (a[1][1] * a[2][2] - a[1][2] * a[2][1]) -
+        a[0][1] * (a[1][0] * a[2][2] - a[1][2] * a[2][0]) +
+        a[0][2] * (a[1][0] * a[2][1] - a[1][1] * a[2][0]);
+
+    final A = [
+      [n, t1, t2],
+      [t1, t2, t3],
+      [t2, t3, t4],
+    ];
+    final d = det3(A);
+    // Degenerate when the timestamps carry no spread.
+    if (d.abs() < 1e-12) return null;
+
+    List<List<double>> swapCol(int col, List<double> rhs) => [
+          for (var r = 0; r < 3; r++)
+            [for (var c = 0; c < 3; c++) c == col ? rhs[r] : A[r][c]],
+        ];
+    final rhs = [y0, y1, y2];
+    final a = det3(swapCol(0, rhs)) / d;
+    final b = det3(swapCol(1, rhs)) / d;
+    final c = det3(swapCol(2, rhs)) / d;
+
+    final yMean = y0 / n;
+    var ssRes = 0.0, ssTot = 0.0;
+    for (var i = 0; i < t.length; i++) {
+      final pred = a + b * t[i] + c * t[i] * t[i];
+      ssRes += (y[i] - pred) * (y[i] - pred);
+      ssTot += (y[i] - yMean) * (y[i] - yMean);
+    }
+    final r2 = ssTot <= 0 ? 0.0 : (1.0 - ssRes / ssTot).clamp(0.0, 1.0);
+
+    return IntakeCurveFit(
+      initialRate: b,
+      // 2c is the rate of change of the eating rate.
+      acceleration: 2 * c,
+      rSquared: r2,
+      samples: m.length,
+    );
+  }
+
+  /// Threshold for "that was a break, not just a slow bite".
+  ///
+  /// The microstructure literature uses an inter-bout interval of about 5
+  /// seconds, but that comes from licking and chewing studies where events
+  /// are a fraction of a second apart. Spoon bites sit 3-12 seconds apart, so
+  /// 5 seconds would make almost every bite its own bout. This calibrates to
+  /// the person instead: a break is a gap several times their own typical
+  /// gap, with a floor so a very fast eater does not get a break declared
+  /// every few seconds.
+  ///
+  /// The multiplier and floor are starting points chosen from the geometry of
+  /// the data, not validated figures.
+  static const double boutBreakFactor = 3.0;
+  static const double boutBreakFloorSec = 20.0;
+
+  static List<EatingBout> _findBouts(List<BiteMoment> m, List<double> gaps) {
+    if (m.length < 2 || gaps.isEmpty) return const [];
+    final med = _median(gaps)!;
+    final threshold = math.max(boutBreakFloorSec, boutBreakFactor * med);
+
+    final out = <EatingBout>[];
+    var firstIdx = 0;
+    for (var i = 1; i < m.length; i++) {
+      final g = m[i].gapBeforeSec;
+      if (g != null && g >= threshold) {
+        out.add(EatingBout(
+          firstBite: m[firstIdx].index,
+          lastBite: m[i - 1].index,
+          start: m[firstIdx].at,
+          end: m[i - 1].at,
+        ));
+        firstIdx = i;
+      }
+    }
+    out.add(EatingBout(
+      firstBite: m[firstIdx].index,
+      lastBite: m.last.index,
+      start: m[firstIdx].at,
+      end: m.last.at,
+    ));
+    return List.unmodifiable(out);
+  }
+
+  static double? _activeRate(
+      int bites, double durationMin, List<MealPause> pauses) {
+    if (bites < 2 || durationMin <= 0) return null;
+    final pausedMin =
+        pauses.fold<double>(0, (sum, p) => sum + p.seconds) / 60.0;
+    final active = durationMin - pausedMin;
+    if (active < 0.5) return null;
+    return bites / active;
+  }
+
+  /// Ordinary least squares of steadiness against minutes elapsed.
+  static double? _steadinessSlope(List<BiteMoment> m) {
+    final pts = [
+      for (final x in m)
+        if (x.steadyPct != null)
+          [x.sinceStart.inMilliseconds / 60000.0, x.steadyPct!],
+    ];
+    if (pts.length < 3) return null;
+    return _slope(pts);
+  }
+
+  static double? _coolingRate(List<BiteMoment> m) {
+    final pts = [
+      for (final x in m)
+        if (x.tempC != null && x.tempC! > 0)
+          [x.sinceStart.inMilliseconds / 60000.0, x.tempC!],
+    ];
+    if (pts.length < 3) return null;
+    final s = _slope(pts);
+    // Reported as a positive cooling rate; food warming up is not cooling.
+    return s == null ? null : -s;
+  }
+
+  static double? _slope(List<List<double>> pts) {
+    final n = pts.length.toDouble();
+    final sx = pts.fold<double>(0, (a, p) => a + p[0]);
+    final sy = pts.fold<double>(0, (a, p) => a + p[1]);
+    final sxx = pts.fold<double>(0, (a, p) => a + p[0] * p[0]);
+    final sxy = pts.fold<double>(0, (a, p) => a + p[0] * p[1]);
+    final denom = n * sxx - sx * sx;
+    if (denom.abs() < 1e-12) return null;
+    return (n * sxy - sx * sy) / denom;
+  }
 
   static double? _mean(List<double> v) =>
       v.isEmpty ? null : v.reduce((a, b) => a + b) / v.length;
