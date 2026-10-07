@@ -471,6 +471,8 @@ class AiLabService extends ChangeNotifier implements AiLabActions {
       end = last.end;
       metrics = _finishedMetrics ?? _metricsOf(last);
       tips = _withPersonalTip(_finishedTips, metrics);
+    } else {
+      tips = _idleTips();
     }
     final id = _deviceId;
     return AiLabViewData(
@@ -490,6 +492,8 @@ class AiLabService extends ChangeNotifier implements AiLabActions {
       handPreference: engine.voter.preference,
       detectedHand: engine.voter.detected,
       handMode: engine.voter.mode,
+      cyclePhase: engine.cyclePhase,
+      calibrated: engine.calibrated,
       recorder: RecorderView(
         recording: recorder.isRecording,
         marks: recorder.markCount,
@@ -506,6 +510,75 @@ class AiLabService extends ChangeNotifier implements AiLabActions {
     _ticker?.cancel();
     profiles.removeListener(notifyListeners);
     super.dispose();
+  }
+
+
+  /// What the coach says between meals.
+  ///
+  /// The page used to fall back to one generic sentence here, while the model
+  /// already held something no other card shows: this person's pace broken
+  /// down BY MEAL TYPE. Everywhere else reports one average across the day,
+  /// which hides that most people eat breakfast and dinner quite differently.
+  List<CoachTip> _idleTips() {
+    if (_spoonKey.isEmpty) return const [];
+    final p = PersonalizedEatingModel().profileFor(_spoonKey);
+    if (p == null || p.mealCount == 0) return const [];
+
+    if (!p.canPersonalize) {
+      final left = PersonalizedProfile.minMealsToPersonalize - p.mealCount;
+      return [
+        CoachTip(
+          id: 'personal_learning',
+          kind: TipKind.info,
+          title: 'Learning how you eat',
+          body: left > 0
+              ? '${p.mealCount} meal${p.mealCount == 1 ? '' : 's'} in. After '
+                  'about $left more your coach can tell an unusual meal from '
+                  'an ordinary one for you specifically.'
+              : 'Almost there — a couple more meals and your coach will judge '
+                  'each one against your own normal.',
+          priority: 65,
+        ),
+      ];
+    }
+
+    // Meal types with enough readings to be worth naming.
+    final named = <String, double>{
+      for (final e in p.byMealType.entries)
+        if (e.value.n >= 3) e.key: p.baselinePaceFor(e.key),
+    };
+    if (named.length >= 2) {
+      final sorted = named.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+      final fast = sorted.first, slow = sorted.last;
+      if ((fast.value - slow.value).abs() >= 2.0) {
+        return [
+          CoachTip(
+            id: 'personal_mealtype',
+            kind: TipKind.info,
+            title: 'Your meals are not all the same',
+            body: 'You eat ${fast.key.toLowerCase()} at about '
+                '${fast.value.toStringAsFixed(0)} bites a minute, and '
+                '${slow.key.toLowerCase()} at about '
+                '${slow.value.toStringAsFixed(0)}. Each meal is judged against '
+                'its own pace, not one daily average.',
+            priority: 65,
+          ),
+        ];
+      }
+    }
+
+    return [
+      CoachTip(
+        id: 'personal_baseline',
+        kind: TipKind.info,
+        title: 'Tuned to you',
+        body: 'Your usual is about ${p.avgPaceBpm.toStringAsFixed(0)} bites a '
+            'minute over roughly ${p.avgMealMinutes.toStringAsFixed(0)} '
+            'minutes. Meals that drift from that get flagged.',
+        priority: 65,
+      ),
+    ];
   }
 
   /// Puts this person's own baseline in front of the generic advice.

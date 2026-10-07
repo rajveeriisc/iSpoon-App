@@ -45,38 +45,59 @@ class EatingPatternCard extends StatelessWidget {
         if (s.meanGapSec != null) s.meanGapSec!,
     ];
 
+    // Between meals there is no "this meal", so the comparison column was a
+    // full column of em-dashes next to the only numbers that meant anything.
+    // Collapse to one column until there is actually something to compare.
+    final live = m != null;
+
+    String pace(double? v) => gapText(v);
+    String mins(double? v) => v == null ? '—' : '${v.toStringAsFixed(1)} min';
+
     return AiLabCard(
       title: 'Your eating pattern',
       icon: Icons.insights_rounded,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        _Row(label: '', now: 'This meal', usual: canCompare ? 'Your usual' : '', header: true),
+        if (live)
+          _Row(
+            label: '',
+            now: 'This meal',
+            usual: canCompare ? 'Your usual' : '',
+            header: true,
+          )
+        else
+          _Row(label: '', now: 'Your usual', usual: '', header: true),
         _Row(
           label: 'Time between bites',
-          now: gapText(m?.meanGapSec),
-          usual: usual == null ? '' : gapText(usual.avgGapSec),
+          now: live ? pace(m.meanGapSec) : pace(usual?.avgGapSec),
+          usual: !live || usual == null ? '' : pace(usual.avgGapSec),
         ),
         _Row(
           label: 'Rhythm',
-          now: rhythmLabel(m?.gapCv),
-          usual: usual == null ? '' : rhythmLabel(usual.avgGapCv),
+          now: live ? rhythmLabel(m.gapCv) : rhythmLabel(usual?.avgGapCv),
+          usual: !live || usual == null ? '' : rhythmLabel(usual.avgGapCv),
         ),
-        _Row(
-          label: 'Pace change',
-          now: m?.speedChange == null
-              ? '—'
-              : m!.speedChange! < 0.8
-                  ? 'Sped up'
-                  : m.speedChange! > 1.25
-                      ? 'Slowed down'
-                      : 'Steady',
-          usual: '',
-        ),
+        // Only ever describes a meal in progress, so it has nothing to say
+        // between meals.
+        if (live)
+          _Row(
+            label: 'Pace change',
+            now: m.speedChange == null
+                ? '—'
+                : m.speedChange! < 0.8
+                    ? 'Sped up'
+                    : m.speedChange! > 1.25
+                        ? 'Slowed down'
+                        : 'Steady',
+            usual: '',
+          ),
         _Row(
           label: 'Meal length',
-          now: m == null ? '—' : '${(m.duration.inSeconds / 60).toStringAsFixed(1)} min',
-          usual: usual?.avgDurationMin == null
+          now: live
+              ? '${(m.duration.inSeconds / 60).toStringAsFixed(1)} min'
+              : mins(usual?.avgDurationMin),
+          usual: !live || usual?.avgDurationMin == null
               ? ''
-              : '${usual!.avgDurationMin!.toStringAsFixed(1)} min',
+              : mins(usual!.avgDurationMin),
         ),
         if (!canCompare) ...[
           const SizedBox(height: 12),

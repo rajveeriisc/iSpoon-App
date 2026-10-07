@@ -10,7 +10,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:smartspoon/features/insights/index.dart';
 import 'package:smartspoon/features/insights/domain/services/insight_generator.dart';
-import 'package:smartspoon/ble/spoon_runtime.dart';
 import 'package:smartspoon/core/widgets/premium_widgets.dart';
 import 'package:smartspoon/core/widgets/premium_header.dart';
 import 'package:smartspoon/core/theme/app_theme.dart';
@@ -204,12 +203,6 @@ class _InsightsDashboardState extends State<InsightsDashboard> {
             'tremor',
             colorScheme.primary,
           ),
-          _buildTab(
-            'Temp',
-            Icons.thermostat,
-            'temperature',
-            colorScheme.primary,
-          ),
         ],
       ),
     );
@@ -357,8 +350,6 @@ class _InsightsDashboardState extends State<InsightsDashboard> {
         return _buildEatingPatternsTab(controller);
       case 'tremor':
         return _buildTremorTab(controller);
-      case 'temperature':
-        return _buildTemperatureTab();
       default:
         return const SizedBox.shrink();
     }
@@ -387,115 +378,4 @@ class _InsightsDashboardState extends State<InsightsDashboard> {
     );
   }
 
-  Widget _buildTemperatureTab() {
-    final colorScheme = Theme.of(context).colorScheme;
-    return PremiumGlassCard(
-      accentColor: const Color(0xFFFF7043),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Temperature Control',
-                style: GoogleFonts.ptSerif(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: colorScheme.onSurface,
-                ),
-              ),
-              const Icon(Icons.thermostat, color: Color(0xFFFF7043)),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Consumer<SpoonRuntime>(
-            builder: (context, ble, _) {
-              final blurb = Text(
-                'Access full temperature controls and heater settings.',
-                style: GoogleFonts.figtree(
-                  fontSize: 14,
-                  color: colorScheme.onSurface.withValues(alpha: 0.8),
-                ),
-              );
-
-              // A connected spoon that reports NO heater gets no heater UI at
-              // all — not the controls, and not the "get a Pro" line either.
-              // Capability is the device's own answer (owner-status capability
-              // bits), so this is a fact about the hardware in the user's hand,
-              // not a guess worth advertising around. Temperature itself still
-              // belongs here: the no-heater SKU reports it too.
-              if (ble.connectedDeviceId != null &&
-                  !ble.connectedDeviceHasHeater) {
-                return Text(
-                  'Live temperature from your spoon.',
-                  style: GoogleFonts.figtree(
-                    fontSize: 14,
-                    color: colorScheme.onSurface.withValues(alpha: 0.8),
-                  ),
-                );
-              }
-
-              if (ble.connectedDeviceHasHeater) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    blurb,
-                    const SizedBox(height: 24),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => const HeaterControlPage(),
-                            ),
-                          );
-                        },
-                        style: ElevatedButton.styleFrom(
-                          // Deep orange 700 keeps white label readable (>=3:1
-                          // for large bold text); lighter FF7043 failed.
-                          backgroundColor: const Color(0xFFE64A19),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          elevation: 0,
-                        ),
-                        child: Text(
-                          'Open Heater Control',
-                          style: GoogleFonts.figtree(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              }
-
-              // Nothing connected: capability is genuinely unknown, so the
-              // original guidance still applies.
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  blurb,
-                  const SizedBox(height: 24),
-                  Text(
-                    'Connect an iSpoon Pro to access heater controls.',
-                    style: GoogleFonts.figtree(
-                      fontSize: 14,
-                      color: colorScheme.onSurface.withValues(alpha: 0.6),
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
 }

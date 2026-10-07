@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:smartspoon/features/ai_lab/domain/engine/meal_tracker.dart';
 import 'package:smartspoon/features/ai_lab/domain/insights/eating_insights.dart';
 import 'package:smartspoon/features/ai_lab/domain/services/ai_lab_view_data.dart';
+import 'package:smartspoon/features/ai_lab/domain/engine/bite_cycle_tracker.dart';
 import 'package:smartspoon/features/ai_lab/presentation/widgets/ai_lab_card.dart';
 
 class LiveMealCard extends StatelessWidget {
@@ -90,6 +91,14 @@ class LiveMealCard extends StatelessWidget {
           Text(subtitle,
               style: theme.textTheme.bodySmall
                   ?.copyWith(color: mutedText(context), height: 1.35)),
+          // What the spoon is doing right now. The engine has tracked this all
+          // along — collecting, lifting, held at the mouth, coming back — and
+          // no screen showed it, so the page could only ever report totals
+          // after the fact.
+          if (data.streaming) ...[
+            const SizedBox(height: 12),
+            _PhaseChip(phase: data.cyclePhase, calibrated: data.calibrated),
+          ],
           if (showStats) ...[
             const SizedBox(height: 16),
             Row(
@@ -169,6 +178,88 @@ class _PaceRing extends StatelessWidget {
               style: theme.textTheme.bodySmall
                   ?.copyWith(fontSize: 10, color: mutedText(context))),
         ]),
+      ]),
+    );
+  }
+}
+
+
+/// Live eating-cycle phase.
+class _PhaseChip extends StatelessWidget {
+  const _PhaseChip({required this.phase, required this.calibrated});
+
+  final BitePhase phase;
+  final bool calibrated;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    // Before the resting-pose reference has settled the phases are not
+    // trustworthy, so say that rather than show a confident wrong label.
+    if (!calibrated) {
+      return _chip(
+        context,
+        Icons.tune_rounded,
+        'Getting to know how you hold the spoon',
+        theme.colorScheme.primary,
+        muted: true,
+      );
+    }
+
+    final (icon, label, color) = switch (phase) {
+      BitePhase.load => (
+          Icons.restaurant_rounded,
+          'Collecting food',
+          theme.colorScheme.primary,
+        ),
+      BitePhase.lift => (
+          Icons.arrow_upward_rounded,
+          'Lifting to your mouth',
+          theme.colorScheme.primary,
+        ),
+      BitePhase.mouth => (
+          Icons.check_circle_rounded,
+          'At your mouth',
+          kSteadyGreen,
+        ),
+      BitePhase.returning => (
+          Icons.arrow_downward_rounded,
+          'Going back down',
+          theme.colorScheme.primary,
+        ),
+      BitePhase.idle => (
+          Icons.pause_circle_outline_rounded,
+          'Spoon at rest',
+          Colors.grey,
+        ),
+    };
+    return _chip(context, icon, label, color);
+  }
+
+  Widget _chip(BuildContext context, IconData icon, String label, Color color,
+      {bool muted = false}) {
+    final c = muted ? mutedText(context) : color;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: c.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: c.withValues(alpha: 0.28)),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 15, color: c),
+        const SizedBox(width: 7),
+        Flexible(
+          child: Text(
+            label,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: c,
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+        ),
       ]),
     );
   }

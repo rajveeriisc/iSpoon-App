@@ -3,6 +3,7 @@
 // directly, which is what lets a widget test render any state.
 import 'package:flutter/foundation.dart';
 import 'package:smartspoon/features/ai_lab/domain/engine/ai_lab_model.dart';
+import 'package:smartspoon/features/ai_lab/domain/engine/bite_cycle_tracker.dart';
 import 'package:smartspoon/features/ai_lab/domain/engine/handedness.dart';
 import 'package:smartspoon/features/ai_lab/domain/engine/meal_tracker.dart';
 import 'package:smartspoon/features/ai_lab/domain/insights/eating_insights.dart';
@@ -43,8 +44,16 @@ class AiLabViewData {
     this.handPreference = HandPreference.auto,
     this.detectedHand,
     this.handMode = HandMode.neutral,
+    this.cyclePhase = BitePhase.idle,
+    this.calibrated = false,
     this.recorder = const RecorderView(),
   });
+
+  /// Where in the eating cycle the spoon is right now.
+  final BitePhase cyclePhase;
+
+  /// True once the per-meal resting-pose reference has settled.
+  final bool calibrated;
 
   final DateTime now;
 
