@@ -1,8 +1,34 @@
 import { Resend } from 'resend';
 import logger from '../utils/logger.js';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM_EMAIL = process.env.MAIL_FROM_ADDRESS || 'noreply@smartspoon.app';
+
+// The Resend client is built on first use, not at import.
+//
+// `new Resend(undefined)` throws, and this module is imported by
+// email.routes.js and firebaseAuthController.js, which app.js loads. So a
+// deployment without RESEND_API_KEY did not fail with "RESEND_API_KEY is
+// missing" — it failed inside the Resend constructor while app.js was still
+// being imported, BEFORE validateSecurityConfig() ran. Every real
+// configuration error was masked by it: a missing DATABASE_URL, a short
+// JWT_SECRET and a leaked HMAC_SECRET all surfaced as
+// `Missing API key. Pass it to the constructor new Resend("re_123")`.
+//
+// Email is also not essential to serving the API, so a server with no mail
+// provider configured should start and log that mail is off, rather than
+// refuse to boot.
+let _resend = null;
+
+function getResend() {
+  if (_resend) return _resend;
+  const key = process.env.RESEND_API_KEY;
+  if (!key) return null;
+  _resend = new Resend(key);
+  return _resend;
+}
+
+/// True when a mail provider is configured.
+export const isEmailConfigured = () => Boolean(process.env.RESEND_API_KEY);
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -223,7 +249,14 @@ Our support team is here for you. Reply to this email or visit our Help Center a
 You're receiving this email because you created an account at SmartSpoon.
     `.trim();
 
-    const { data, error } = await resend.emails.send({
+    const client = getResend();
+    if (!client) {
+      logger.warn('RESEND_API_KEY is not set — skipping email', {
+        context: 'Email',
+      });
+      return { success: false, skipped: true, reason: 'email_not_configured' };
+    }
+    const { data, error } = await client.emails.send({
       from: FROM_EMAIL,
       to: user.email,
       subject: 'Welcome to SmartSpoon! 🥄',
@@ -324,7 +357,14 @@ export async function sendVerificationEmail({ email, verificationLink }) {
 
     const textContent = `Verify your email for SmartSpoon\n\nHi ${userName},\n\nPlease click the link below to verify your email:\n${safeVerificationLink}\n\nIf you didn't create an account, you can ignore this email.`;
 
-    const { data, error } = await resend.emails.send({
+    const client = getResend();
+    if (!client) {
+      logger.warn('RESEND_API_KEY is not set — skipping email', {
+        context: 'Email',
+      });
+      return { success: false, skipped: true, reason: 'email_not_configured' };
+    }
+    const { data, error } = await client.emails.send({
       from: FROM_EMAIL,
       to: email,
       subject: 'Verify your email - SmartSpoon 🥄',
