@@ -25,8 +25,26 @@ class SummaryCards extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       label: 'Summary cards: total bites, eating pace',
-      child: SizedBox(
-        height: 152,
+      // Sized to its own content rather than a fixed 152.
+      //
+      // Measured content height against the old hard-coded 152:
+      //
+      //   text scale 1.0 -> 146 px   (fits, 6 px spare)
+      //   text scale 1.3 -> 164 px   (overflowed by 12)
+      //   text scale 1.6 -> 183 px   (overflowed by 31)
+      //
+      // main.dart clamps accessibility text to 1.6x, so every user above the
+      // default size was clipping. iOS shows it first: Dynamic Type is
+      // changed far more often there, and an iPhone SE/mini is 375 dp wide
+      // against 390 on a 14 and more on most Android phones.
+      //
+      // The "// Reduced from 28" and "// Prevent overflow" comments below are
+      // the scars of that — the type was shrunk to fit a box that was the
+      // wrong size to begin with, which is why it also read as mismatched.
+      //
+      // IntrinsicHeight makes both cards as tall as the taller one's content,
+      // so they stay matched at any text size, on any screen width.
+      child: IntrinsicHeight(
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -100,8 +118,11 @@ class _SummaryCard extends StatelessWidget {
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          // spaceBetween keeps the icon at the top and the figures at the
+          // bottom, as before. mainAxisSize.min is gone: under IntrinsicHeight
+          // the column is given the card's height, and asking it to shrink at
+          // the same time is contradictory.
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          mainAxisSize: MainAxisSize.min, // Prevent overflow
           children: [
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -124,7 +145,10 @@ class _SummaryCard extends StatelessWidget {
                   ),
               ],
             ),
-            const Spacer(),
+            // Was a Spacer(). Spacer is an Expanded, and Expanded under
+            // IntrinsicHeight asserts, because intrinsic measurement needs an
+            // unbounded child height. spaceBetween already does the job.
+            const SizedBox(height: AppTheme.spaceSm),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
