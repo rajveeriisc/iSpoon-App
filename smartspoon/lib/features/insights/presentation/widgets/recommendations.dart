@@ -47,20 +47,49 @@ class Recommendations extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          Text(
-            '✓ Great progress! Tremor decreased this week.',
-            style: GoogleFonts.figtree(
-              color: Theme.of(
-                context,
-              ).colorScheme.onSurface.withValues(alpha: 0.8),
-            ),
+          // Leading Icons rather than '✓' and '⚠️' typed into the string.
+          // Text glyphs take the text font, so they vary by platform, ignore
+          // icon colour and size, and read as emoji rather than as part of
+          // the interface.
+          _Suggestion(
+            icon: Icons.trending_down_rounded,
+            text: 'Great progress! Tremor decreased this week.',
           ),
-          Text(
-            '⚠️ Eating speed: Try smaller bites and pauses.',
-            style: GoogleFonts.figtree(
-              color: Theme.of(
-                context,
-              ).colorScheme.onSurface.withValues(alpha: 0.8),
+          _Suggestion(
+            icon: Icons.schedule_rounded,
+            text: 'Eating speed: try smaller bites and pauses.',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One suggestion line: a leading interface icon, then the text.
+class _Suggestion extends StatelessWidget {
+  const _Suggestion({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 2, right: 8),
+            child: Icon(icon, size: 16, color: onSurface.withValues(alpha: 0.55)),
+          ),
+          Expanded(
+            child: Text(
+              text,
+              style: GoogleFonts.figtree(
+                color: onSurface.withValues(alpha: 0.8),
+              ),
             ),
           ),
         ],

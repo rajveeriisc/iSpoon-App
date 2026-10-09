@@ -31,70 +31,70 @@ class FunnyNotificationService {
 
   static const List<Map<String, String>> _notifications = [
     {
-      'title': '🥄 Your spoon\'s ready when you are',
+      'title': 'Your spoon\'s ready when you are',
       'body':
           'Haven\'t seen a bite in a while — open up and pick up where you left off.',
     },
     {
-      'title': '🍜 Hungry?',
+      'title': 'Hungry?',
       'body': 'Your i-Spoon is charged and ready to track your next meal.',
     },
     {
-      'title': '🏆 Nice work yesterday',
+      'title': 'Nice work yesterday',
       'body': 'You hit your bite goal. Let\'s see if today can match it.',
     },
     {
-      'title': '🌡️ Heads up on the heat',
+      'title': 'Heads up on the heat',
       'body':
           'i-Spoon keeps an eye on food temp so you don\'t catch a surprise.',
     },
     {
-      'title': '🧠 Eating slower pays off',
+      'title': 'Eating slower pays off',
       'body':
           'It takes about 20 minutes to feel full — i-Spoon helps you find that pace.',
     },
     {
-      'title': '🥗 Don\'t skip lunch',
+      'title': 'Don\'t skip lunch',
       'body':
           'A quick, tracked meal beats none. Grab a bite when you get a moment.',
     },
     {
-      'title': '📊 No meals logged yet today',
+      'title': 'No meals logged yet today',
       'body':
           'Whenever you eat next, your spoon will pick it up automatically.',
     },
     {
-      'title': '🎯 Bite goal reached',
+      'title': 'Bite goal reached',
       'body':
           'You\'re on a roll — see if you can keep the streak going tomorrow.',
     },
     {
-      'title': '⚡ Review your meal trend',
+      'title': 'Review your meal trend',
       'body': 'Open Insights to compare pace and hand movement across meals.',
     },
     {
-      'title': '🍳 Quick reminder',
+      'title': 'Quick reminder',
       'body': 'You haven\'t logged breakfast yet — a small meal still counts.',
     },
     {
-      'title': '😴 Good morning',
+      'title': 'Good morning',
       'body': 'No meals tracked yet today. Start whenever you\'re ready.',
     },
     {
-      'title': '🚀 Pacing check',
+      'title': 'Pacing check',
       'body':
           'You\'re eating a little fast — a short pause between bites can help.',
     },
     {
-      'title': '🎉 You\'re doing great',
+      'title': 'You\'re doing great',
       'body': 'Consistent tracking adds up — keep going.',
     },
     {
-      'title': '🧂 Whatever\'s on the menu',
+      'title': 'Whatever\'s on the menu',
       'body': 'Your i-Spoon is ready to track it, salty or sweet.',
     },
     {
-      'title': '💡 Did you know?',
+      'title': 'Did you know?',
       'body':
           'Eating slowly is linked to eating less overall. Small changes add up.',
     },

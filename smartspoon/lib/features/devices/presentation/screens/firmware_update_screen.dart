@@ -405,7 +405,7 @@ class _FirmwareUpdateScreenState extends State<FirmwareUpdateScreen> {
           if (_dfu.isBusy) ...[
             const SizedBox(height: 12),
             Text(
-              '⚠️ Keep the app open and the spoon nearby until the update finishes.',
+              'Keep the app open and the spoon nearby until the update finishes.',
               style: GoogleFonts.figtree(
                 fontSize: 12,
                 color: Colors.orangeAccent,

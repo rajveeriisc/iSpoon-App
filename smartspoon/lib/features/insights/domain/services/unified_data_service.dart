@@ -1102,7 +1102,7 @@ class UnifiedDataService extends ChangeNotifier with WidgetsBindingObserver {
         );
       } else {
         NotificationService().showLocalAlert(
-          title: '⚡ Eating Too Fast',
+          title: 'Eating Too Fast',
           body:
               '${getSession(primaryDeviceId ?? "").smoothedSpeedBpm.toStringAsFixed(0)} bites/min — try to slow down',
           type: 'eating_alerts',
@@ -1126,7 +1126,7 @@ class UnifiedDataService extends ChangeNotifier with WidgetsBindingObserver {
         );
       } else {
         NotificationService().showLocalAlert(
-          title: '🌡️ Food Very Hot',
+          title: 'Food Very Hot',
           body: '${formatSpoonTempC(temp)}°C — wait before eating',
           type: 'eating_alerts',
           priority: 'CRITICAL',

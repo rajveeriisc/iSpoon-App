@@ -109,7 +109,7 @@ class _HeaterControlPageState extends State<HeaterControlPage>
 
     if (!mcu.isConnected) {
       if (mounted) {
-        _showSnackBar('⚠️  No device connected', AppTheme.paprika);
+        _showSnackBar('No device connected', AppTheme.paprika);
       }
       return;
     }
@@ -125,7 +125,7 @@ class _HeaterControlPageState extends State<HeaterControlPage>
       debugPrint('Heater command failed: $e');
       if (mounted) {
         _showSnackBar(
-          '⚠️  Couldn\'t update the heater — check the connection and try again',
+          'Couldn\'t update the heater — check the connection and try again',
           AppTheme.paprika,
         );
       }
@@ -135,7 +135,7 @@ class _HeaterControlPageState extends State<HeaterControlPage>
     if (!commandSent) {
       if (mounted) {
         _showSnackBar(
-          '⚠️  Couldn\'t update the heater — check the connection and try again',
+          'Couldn\'t update the heater — check the connection and try again',
           AppTheme.paprika,
         );
       }

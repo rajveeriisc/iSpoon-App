@@ -136,7 +136,7 @@ class SmartReminderService {
   Future<void> _scheduleBreakfastReminder() async {
     await _schedule(
       id: _idBreakfastReminder,
-      title: '🌅 Good morning!',
+      title: 'Good morning!',
       body: "Haven't tracked breakfast yet — time to eat!",
       at: _nextTime(hour: 10, minute: 0),
       channelId: 'engagement',
@@ -147,7 +147,7 @@ class SmartReminderService {
   Future<void> _scheduleAfternoonCheck() async {
     await _schedule(
       id: _idAfternoonCheck,
-      title: '🍽️ No meals tracked today',
+      title: 'No meals tracked today',
       body: 'Everything okay? Log your meals to track your progress.',
       at: _nextTime(hour: 14, minute: 0),
       channelId: 'engagement',
@@ -158,7 +158,7 @@ class SmartReminderService {
   Future<void> _scheduleEveningGoalNudge() async {
     await _schedule(
       id: _idEveningGoal,
-      title: '🎯 Almost at your goal!',
+      title: 'Almost at your goal!',
       body: "A few more bites and you'll hit today's target.",
       at: _nextTime(hour: 19, minute: 0),
       channelId: 'engagement',
@@ -198,7 +198,7 @@ class SmartReminderService {
 
     await _schedule(
       id: _idWeeklySummary,
-      title: '📊 Your week in review',
+      title: 'Your week in review',
       body: 'See how your eating and tremor trends looked this week.',
       at: fireAt,
       channelId: 'daily_summary',
@@ -209,7 +209,7 @@ class SmartReminderService {
   Future<void> _scheduleDailySummary() async {
     await _schedule(
       id: _idDailySummary,
-      title: '🥄 Daily Summary Ready',
+      title: 'Daily Summary Ready',
       body: 'Tap to see your full eating report for today.',
       at: _nextTime(hour: 21, minute: 0),
       channelId: 'daily_summary',

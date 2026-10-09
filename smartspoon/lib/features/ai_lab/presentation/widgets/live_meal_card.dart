@@ -171,9 +171,18 @@ class _PaceRing extends StatelessWidget {
           ),
         ),
         Column(mainAxisSize: MainAxisSize.min, children: [
-          Text(reached ? '✓' : '${s.floor()} s',
-              style: theme.textTheme.titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w900, color: color)),
+          // An Icon, not a '✓' character. A tick typed into a Text renders in
+          // the text font — it sits on the text baseline, ignores icon
+          // sizing, and falls back to whatever glyph the platform happens to
+          // have. Material's check is drawn from the icon font and matches
+          // every other symbol in the app.
+          if (reached)
+            Icon(Icons.check_rounded,
+                size: theme.textTheme.titleMedium?.fontSize, color: color)
+          else
+            Text('${s.floor()} s',
+                style: theme.textTheme.titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w900, color: color)),
           Text('since bite',
               style: theme.textTheme.bodySmall
                   ?.copyWith(fontSize: 10, color: mutedText(context))),

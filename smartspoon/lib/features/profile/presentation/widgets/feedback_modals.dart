@@ -273,7 +273,7 @@ class _FeedbackModalState extends State<_FeedbackModal> {
                 // Send as a local alert so feedback is logged — real backend
                 // integration can replace this with an API call later.
                 await NotificationService().showLocalAlert(
-                  title: 'Feedback Received ⭐ ${rating.toStringAsFixed(1)}',
+                  title: 'Feedback received — ${rating.toStringAsFixed(1)} out of 5',
                   body: message.isNotEmpty ? message : 'No message provided.',
                   type: 'system_alerts',
                   priority: 'DEFAULT',

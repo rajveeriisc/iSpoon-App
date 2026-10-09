@@ -613,7 +613,7 @@ class NotificationService {
   /// Show a random test notification with app logo (for testing the bell button)
   Future<void> showTestNotification() async {
     final messages = [
-      ('i-Spoon', 'Your data has been synced successfully! 🥄'),
+      ('i-Spoon', 'Your data has been synced.'),
       ('Eating Reminder', 'Time for your next meal check-in!'),
       ('Great Job!', 'You\'ve completed your daily bite goal today.'),
       ('Health Tip', 'Eating slowly helps digestion — keep it up!'),
@@ -857,30 +857,27 @@ class NotificationService {
     final avgTempC = (stats['avg_temp_c'] as num?)?.toDouble();
     final avgTemp = avgTempC != null ? formatSpoonTempC(avgTempC) : '--';
 
-    final movementEmoji =
-        movementLevel == 'No rhythm' ||
-            movementLevel == 'Steady' ||
-            movementLevel == 'Low'
-        ? '🟢'
-        : movementLevel == 'Some' || movementLevel == 'Moderate'
-        ? '🟡'
-        : movementLevel == 'More' || movementLevel == 'High'
-        ? '🔴'
-        : '⚪';
-    final goalEmoji = goalReached ? '✅' : '⭕';
-
+    // Plain text, no emoji.
+    //
+    // This summary used to be built almost entirely out of them: coloured
+    // circles for the movement level, a tick or ring for the goal, and a
+    // sunrise, sun, moon and apple for the four meals. Stacked in an inbox-
+    // style notification it read as a novelty rather than a daily report,
+    // and the glyphs render differently on every Android skin and iOS
+    // version. The numbers are the content; the words label them.
     final lines = [
-      '$goalEmoji $totalBites / $goalBites bites${goalReached ? ' — Goal reached!' : ''}',
+      '$totalBites of $goalBites bites'
+          '${goalReached ? ' — goal reached' : ''}',
       if ((stats['breakfast'] as int? ?? 0) > 0)
-        '🌅 Breakfast   ${stats['breakfast']} bites',
+        'Breakfast   ${stats['breakfast']} bites',
       if ((stats['lunch'] as int? ?? 0) > 0)
-        '☀️  Lunch       ${stats['lunch']} bites',
+        'Lunch       ${stats['lunch']} bites',
       if ((stats['dinner'] as int? ?? 0) > 0)
-        '🌙 Dinner      ${stats['dinner']} bites',
+        'Dinner      ${stats['dinner']} bites',
       if ((stats['snack'] as int? ?? 0) > 0)
-        '🍎 Snack       ${stats['snack']} bites',
-      '$movementEmoji Repeated movement  $movementLevel',
-      '🌡️ Avg temp    $avgTemp°C',
+        'Snack       ${stats['snack']} bites',
+      'Hand movement   $movementLevel',
+      'Average temp    $avgTemp°C',
     ];
 
     final AndroidNotificationDetails androidDetails =
@@ -893,7 +890,7 @@ class NotificationService {
           largeIcon: const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
           styleInformation: InboxStyleInformation(
             lines,
-            contentTitle: '🥄 i-Spoon Daily Summary',
+            contentTitle: 'Your day with i-Spoon',
             summaryText: '$totalBites bites today',
           ),
           actions: const [
@@ -915,7 +912,7 @@ class NotificationService {
 
     await _localNotifications.show(
       850, // fixed ID — daily summary (funny reminders use 1000+)
-      goalReached ? '🎯 Goal Reached Today!' : '📊 Daily Summary',
+      goalReached ? 'Goal reached today' : 'Your daily summary',
       '$totalBites bites • Movement: $movementLevel • Temp: $avgTemp°C',
       NotificationDetails(android: androidDetails, iOS: iosDetails),
       payload: 'open_insights',
