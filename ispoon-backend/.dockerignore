@@ -1,0 +1,39 @@
+# Everything listed here is excluded from the build context — the snapshot of
+# files sent to the Docker daemon before the build starts. Without this,
+# node_modules alone is 126 MB of host-built binaries that would be copied in
+# and then thrown away, because the image installs its own.
+
+node_modules
+npm-debug.log*
+
+# Secrets. These must never be baked into an image: anyone who can pull the
+# image can read them, and image layers keep a file even after a later layer
+# deletes it. Pass them at run time with --env-file or the platform's env vars.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+serviceAccount*.json
+firebase-adminsdk*.json
+
+# Real user data. Avatars and meal photos belong on a mounted volume, not in
+# the image.
+uploads
+
+# Not needed to serve the API.
+test
+*.test.js
+.github
+docs
+*.md
+!README.md
+
+# Local noise.
+.git
+.gitignore
+.DS_Store
+coverage
+*.log
+.vscode
+.idea
