@@ -294,7 +294,6 @@ class AIInsightCard extends StatelessWidget {
                   ),
                 ),
               ),
-              Icon(Icons.auto_awesome, color: accentColor, size: 16),
             ],
           ),
           const SizedBox(height: 12),

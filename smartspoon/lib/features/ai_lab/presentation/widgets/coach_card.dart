@@ -14,7 +14,7 @@ class CoachCard extends StatelessWidget {
     final theme = Theme.of(context);
     return AiLabCard(
       title: 'Your coach',
-      icon: Icons.auto_awesome_rounded,
+      icon: Icons.insights_rounded,
       child: tips.isEmpty
           ? Text(
               inMeal

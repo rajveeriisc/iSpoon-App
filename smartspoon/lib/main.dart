@@ -19,6 +19,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:smartspoon/core/core.dart';
 import 'package:smartspoon/features/ai_lab/domain/services/ai_lab_service.dart';
 import 'package:smartspoon/features/auth/index.dart';
@@ -248,45 +249,52 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<ThemeProvider>(
       builder: (context, themeProvider, child) {
-        return MaterialApp(
-          debugShowCheckedModeBanner: false,
-          title: 'i-Spoon',
-          theme: AppTheme.lightTheme,
-          darkTheme: AppTheme.darkTheme,
-          themeMode: themeProvider.themeMode,
-          scrollBehavior: AppScrollBehavior(),
-          navigatorKey: navigatorKey,
-          home: const AuthGate(),
-          // Performance improvements
+        return ScreenUtilInit(
+          designSize: const Size(393, 852), // Baseline design size (e.g., iPhone 14 Pro)
+          minTextAdapt: true,
+          splitScreenMode: true,
           builder: (context, child) {
-            // Preserve user scaling while capping only the extreme range that
-            // would make dense health charts unusable. Auth and navigation
-            // layouts are responsive through this full supported range.
-            final mediaQuery = MediaQuery.of(context);
-            final constrainedTextScale = mediaQuery.textScaler.clamp(
-              minScaleFactor: 0.8,
-              maxScaleFactor: 1.6,
-            );
+            return MaterialApp(
+              debugShowCheckedModeBanner: false,
+              title: 'i-Spoon',
+              theme: AppTheme.lightTheme,
+              darkTheme: AppTheme.darkTheme,
+              themeMode: themeProvider.themeMode,
+              scrollBehavior: AppScrollBehavior(),
+              navigatorKey: navigatorKey,
+              home: const AuthGate(),
+              // Performance improvements
+              builder: (context, child) {
+                // Preserve user scaling while capping only the extreme range that
+                // would make dense health charts unusable. Auth and navigation
+                // layouts are responsive through this full supported range.
+                final mediaQuery = MediaQuery.of(context);
+                final constrainedTextScale = mediaQuery.textScaler.clamp(
+                  minScaleFactor: 0.8,
+                  maxScaleFactor: 1.6,
+                );
 
-            final isDark = Theme.of(context).brightness == Brightness.dark;
-            return AnnotatedRegion<SystemUiOverlayStyle>(
-              value: SystemUiOverlayStyle(
-                statusBarColor: Colors.transparent,
-                statusBarIconBrightness: isDark
-                    ? Brightness.light
-                    : Brightness.dark,
-                statusBarBrightness: isDark
-                    ? Brightness.dark
-                    : Brightness.light,
-                systemNavigationBarColor: Colors.transparent,
-                systemNavigationBarIconBrightness: isDark
-                    ? Brightness.light
-                    : Brightness.dark,
-              ),
-              child: MediaQuery(
-                data: mediaQuery.copyWith(textScaler: constrainedTextScale),
-                child: child!,
-              ),
+                final isDark = Theme.of(context).brightness == Brightness.dark;
+                return AnnotatedRegion<SystemUiOverlayStyle>(
+                  value: SystemUiOverlayStyle(
+                    statusBarColor: Colors.transparent,
+                    statusBarIconBrightness: isDark
+                        ? Brightness.light
+                        : Brightness.dark,
+                    statusBarBrightness: isDark
+                        ? Brightness.dark
+                        : Brightness.light,
+                    systemNavigationBarColor: Colors.transparent,
+                    systemNavigationBarIconBrightness: isDark
+                        ? Brightness.light
+                        : Brightness.dark,
+                  ),
+                  child: MediaQuery(
+                    data: mediaQuery.copyWith(textScaler: constrainedTextScale),
+                    child: child!,
+                  ),
+                );
+              },
             );
           },
         );

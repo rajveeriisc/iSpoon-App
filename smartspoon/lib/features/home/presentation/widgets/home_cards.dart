@@ -6,6 +6,7 @@
 // cards. Each is a self-contained, per-deviceId widget the home_page composes
 // into the feed.
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:smartspoon/features/ai_lab/domain/services/personalized_eating_model.dart';
@@ -170,9 +171,9 @@ class _SpoonConnectedCardState extends State<SpoonConnectedCard> {
           PremiumIconBox(
             icon: Icons.bluetooth_searching,
             color: AppTheme.textSecondary,
-            size: 28,
+            size: 28.sp,
           ),
-          const SizedBox(width: 16),
+          SizedBox(width: 16.w),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -180,16 +181,16 @@ class _SpoonConnectedCardState extends State<SpoonConnectedCard> {
                 Text(
                   'Connect Device',
                   style: GoogleFonts.figtree(
-                    fontSize: 18,
+                    fontSize: 18.sp,
                     fontWeight: FontWeight.bold,
                     color: Theme.of(context).colorScheme.onSurface,
                   ),
                 ),
-                const SizedBox(height: 4),
+                SizedBox(height: 4.h),
                 Text(
                   'Tap to pair your I-Spoon',
                   style: GoogleFonts.figtree(
-                    fontSize: 14,
+                    fontSize: 14.sp,
                     color: Theme.of(
                       context,
                     ).colorScheme.onSurface.withValues(alpha: 0.6),
@@ -198,7 +199,7 @@ class _SpoonConnectedCardState extends State<SpoonConnectedCard> {
               ],
             ),
           ),
-          Icon(Icons.add_circle, color: AppTheme.emerald, size: 28),
+          Icon(Icons.add_circle, color: AppTheme.emerald, size: 28.sp),
         ],
       ),
     ).animate().fadeIn().slideY(begin: 0.1, end: 0);
@@ -278,7 +279,7 @@ class _SpoonConnectedCardState extends State<SpoonConnectedCard> {
           Row(
             children: [
               PremiumIconBox(icon: statusIcon, color: statusColor),
-              const SizedBox(width: 16),
+              SizedBox(width: 16.w),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -286,19 +287,19 @@ class _SpoonConnectedCardState extends State<SpoonConnectedCard> {
                     Text(
                       deviceName,
                       style: GoogleFonts.figtree(
-                        fontSize: 18,
+                        fontSize: 18.sp,
                         fontWeight: FontWeight.bold,
                         color: Theme.of(context).colorScheme.onSurface,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 4),
+                    SizedBox(height: 4.h),
                     Row(
                       children: [
                         Container(
-                          width: 8,
-                          height: 8,
+                          width: 8.w,
+                          height: 8.h,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             color: statusColor,
@@ -311,11 +312,11 @@ class _SpoonConnectedCardState extends State<SpoonConnectedCard> {
                             ],
                           ),
                         ),
-                        const SizedBox(width: 8),
+                        SizedBox(width: 8.w),
                         Text(
                           statusText,
                           style: GoogleFonts.figtree(
-                            fontSize: 14,
+                            fontSize: 14.sp,
                             color: statusColor,
                             fontWeight: FontWeight.w500,
                           ),
@@ -327,7 +328,7 @@ class _SpoonConnectedCardState extends State<SpoonConnectedCard> {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: 16.h),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -337,10 +338,10 @@ class _SpoonConnectedCardState extends State<SpoonConnectedCard> {
                     children: [
                       Icon(
                         _getBatteryIcon(batteryLevel),
-                        size: 20,
+                        size: 20.sp,
                         color: _getBatteryColor(batteryLevel),
                       ),
-                      const SizedBox(width: 8),
+                      SizedBox(width: 8.w),
                       Expanded(
                         child: Text(
                           batteryLevel > 0
@@ -349,7 +350,7 @@ class _SpoonConnectedCardState extends State<SpoonConnectedCard> {
                               ? 'Syncing…'
                               : 'Battery N/A',
                           style: GoogleFonts.figtree(
-                            fontSize: 14,
+                            fontSize: 14.sp,
                             color: Theme.of(
                               context,
                             ).colorScheme.onSurface.withValues(alpha: 0.6),
@@ -367,12 +368,12 @@ class _SpoonConnectedCardState extends State<SpoonConnectedCard> {
                     children: [
                       Icon(
                         Icons.history,
-                        size: 20,
+                        size: 20.sp,
                         color: Theme.of(
                           context,
                         ).colorScheme.onSurface.withValues(alpha: 0.6),
                       ),
-                      const SizedBox(width: 8),
+                      SizedBox(width: 8.w),
                       Expanded(
                         child: Text(
                           lastConnectedText.isNotEmpty
@@ -381,7 +382,7 @@ class _SpoonConnectedCardState extends State<SpoonConnectedCard> {
                               ? 'Turn on Bluetooth'
                               : 'Tap to connect',
                           style: GoogleFonts.figtree(
-                            fontSize: 14,
+                            fontSize: 14.sp,
                             color: Theme.of(
                               context,
                             ).colorScheme.onSurface.withValues(alpha: 0.6),
@@ -403,13 +404,13 @@ class _SpoonConnectedCardState extends State<SpoonConnectedCard> {
                       ? _navigateToDeviceDetails
                       : () => _handleReconnect(deviceId),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
+                    padding: EdgeInsets.symmetric(
                       horizontal: 12,
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
                       color: AppTheme.emerald.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(20.r),
                       border: Border.all(
                         color: AppTheme.emerald.withValues(alpha: 0.3),
                       ),
@@ -417,7 +418,7 @@ class _SpoonConnectedCardState extends State<SpoonConnectedCard> {
                     child: Text(
                       uiState == DeviceUiState.error ? 'Retry' : 'Reconnect',
                       style: GoogleFonts.figtree(
-                        fontSize: 12,
+                        fontSize: 12.sp,
                         color: AppTheme.emerald,
                         fontWeight: FontWeight.bold,
                       ),
@@ -432,13 +433,13 @@ class _SpoonConnectedCardState extends State<SpoonConnectedCard> {
           // 'Forget "iSpoon Pro" in Blu…' — an instruction the user cannot act
           // on is the same as no instruction at all.
           if (repairHint != null) ...[
-            const SizedBox(height: 12),
+            SizedBox(height: 12.h),
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
                 color: Colors.orangeAccent.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(12.r),
                 border: Border.all(
                   color: Colors.orangeAccent.withValues(alpha: 0.35),
                 ),
@@ -446,18 +447,18 @@ class _SpoonConnectedCardState extends State<SpoonConnectedCard> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.warning_amber_rounded,
-                    size: 18,
+                    size: 18.sp,
                     color: Colors.orangeAccent,
                   ),
-                  const SizedBox(width: 8),
+                  SizedBox(width: 8.w),
                   Expanded(
                     child: Text(
                       repairHint,
                       style: GoogleFonts.figtree(
-                        fontSize: 13,
-                        height: 1.35,
+                        fontSize: 13.sp,
+                        height: 1.35.h,
                         color: Colors.orange.shade900,
                         fontWeight: FontWeight.w500,
                       ),
@@ -468,10 +469,10 @@ class _SpoonConnectedCardState extends State<SpoonConnectedCard> {
                   // worse than no button. A plain gear reads instantly and
                   // costs none of the width the message needs.
                   if (showBtSettings) ...[
-                    const SizedBox(width: 6),
+                    SizedBox(width: 6.w),
                     IconButton(
                       onPressed: SystemSettingsService.openBluetoothSettings,
-                      icon: const Icon(Icons.settings),
+                      icon: Icon(Icons.settings),
                       iconSize: 20,
                       color: Colors.orange.shade900,
                       tooltip: 'Open Bluetooth settings',
@@ -530,10 +531,10 @@ class TemperatureCard extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.thermostat,
                           color: AppTheme.honey,
-                          size: 24,
+                          size: 24.sp,
                         ),
                         Builder(
                           builder: (context) {
@@ -542,8 +543,8 @@ class TemperatureCard extends StatelessWidget {
                             final hasLiveReading =
                                 dataService.foodTempCFor(devId) > 0;
                             return Container(
-                              width: 6,
-                              height: 6,
+                              width: 6.w,
+                              height: 6.h,
                               decoration: BoxDecoration(
                                 color: hasLiveReading
                                     ? AppTheme.honey
@@ -556,17 +557,17 @@ class TemperatureCard extends StatelessWidget {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12.h),
                     Text(
                       'Food Temp',
                       style: GoogleFonts.figtree(
-                        fontSize: 12,
+                        fontSize: 12.sp,
                         color: Theme.of(
                           context,
                         ).colorScheme.onSurface.withValues(alpha: 0.6),
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    SizedBox(height: 4.h),
                     AnimatedSwitcher(
                       duration: const Duration(milliseconds: 300),
                       child: Text(
@@ -574,7 +575,7 @@ class TemperatureCard extends StatelessWidget {
                             ? '${formatSpoonTempC(dataService.foodTempCFor(devId))}°'
                             : '—',
                         style: AppTheme.serif(
-                          fontSize: 28,
+                          fontSize: 28.sp,
                           fontWeight: FontWeight.w600,
                           color: Theme.of(context).colorScheme.onSurface,
                         ),
@@ -586,7 +587,7 @@ class TemperatureCard extends StatelessWidget {
             ),
             // Heater card — only shown for iSpoon Pro
             if (ble.connectedDeviceHasHeater) ...[
-              const SizedBox(width: 16),
+              SizedBox(width: 16.w),
               Expanded(
                 child: PremiumGlassCard(
                   onTap: () {
@@ -612,11 +613,11 @@ class TemperatureCard extends StatelessWidget {
                                 color: dataService.isHeaterOnFor(devId)
                                     ? AppTheme.paprika
                                     : Colors.grey,
-                                size: 24,
+                                size: 24.sp,
                               ),
                               Container(
-                                width: 6,
-                                height: 6,
+                                width: 6.w,
+                                height: 6.h,
                                 decoration: BoxDecoration(
                                   color: dataService.isHeaterOnFor(devId)
                                       ? AppTheme.paprika
@@ -637,21 +638,21 @@ class TemperatureCard extends StatelessWidget {
                               ),
                             ],
                           ),
-                          const SizedBox(height: 12),
+                          SizedBox(height: 12.h),
                           Text(
                             'Heater',
                             style: GoogleFonts.figtree(
-                              fontSize: 12,
+                              fontSize: 12.sp,
                               color: Theme.of(
                                 context,
                               ).colorScheme.onSurface.withValues(alpha: 0.6),
                             ),
                           ),
-                          const SizedBox(height: 4),
+                          SizedBox(height: 4.h),
                           Text(
                             dataService.heaterHomeLabelFor(devId),
                             style: AppTheme.serif(
-                              fontSize: 28,
+                              fontSize: 28.sp,
                               fontWeight: FontWeight.w600,
                               color: dataService.isHeaterOnFor(devId)
                                   ? Theme.of(context).colorScheme.onSurface
@@ -709,7 +710,7 @@ class EatingAnalysisCard extends StatelessWidget {
         bool hasData = dataService.totalBitesFor(devId) > 0;
 
         return PremiumGlassCard(
-          padding: const EdgeInsets.all(20),
+          padding: EdgeInsets.all(20),
           onTap: () {
             Navigator.push(
               context,
@@ -727,21 +728,21 @@ class EatingAnalysisCard extends StatelessWidget {
                   Text(
                     'Eating Analysis',
                     style: GoogleFonts.figtree(
-                      fontSize: 18,
+                      fontSize: 18.sp,
                       fontWeight: FontWeight.bold,
                       color: Theme.of(context).colorScheme.onSurface,
                     ),
                   ),
                   Icon(
                     Icons.arrow_forward_ios,
-                    size: 16,
+                    size: 16.sp,
                     color: Theme.of(
                       context,
                     ).colorScheme.onSurface.withValues(alpha: 0.6),
                   ),
                 ],
               ),
-              const SizedBox(height: 24),
+              SizedBox(height: 24.h),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -755,8 +756,8 @@ class EatingAnalysisCard extends StatelessWidget {
                         : AppTheme.caramel,
                   ),
                   Container(
-                    width: 1,
-                    height: 40,
+                    width: 1.w,
+                    height: 40.h,
                     color: Theme.of(
                       context,
                     ).dividerColor.withValues(alpha: 0.1),
@@ -778,8 +779,8 @@ class EatingAnalysisCard extends StatelessWidget {
                         : AppTheme.emerald,
                   ),
                   Container(
-                    width: 1,
-                    height: 40,
+                    width: 1.w,
+                    height: 40.h,
                     color: Theme.of(
                       context,
                     ).dividerColor.withValues(alpha: 0.1),
@@ -806,12 +807,12 @@ class EatingAnalysisCard extends StatelessWidget {
               ),
               // ── Per-Meal Breakdown ───────────────────────────────
               if (hasData) ...[
-                const SizedBox(height: 20),
+                SizedBox(height: 20.h),
                 Container(
-                  height: 1,
+                  height: 1.h,
                   color: Theme.of(context).dividerColor.withValues(alpha: 0.1),
                 ),
-                const SizedBox(height: 16),
+                SizedBox(height: 16.h),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
@@ -872,16 +873,16 @@ class _AnalysisItem extends StatelessWidget {
         Text(
           value,
           style: AppTheme.serif(
-            fontSize: 24,
+            fontSize: 24.sp,
             fontWeight: FontWeight.w600,
             color: color,
           ),
         ),
-        const SizedBox(height: 4),
+        SizedBox(height: 4.h),
         Text(
           label,
           style: GoogleFonts.figtree(
-            fontSize: 12,
+            fontSize: 12.sp,
             color: Theme.of(
               context,
             ).colorScheme.onSurface.withValues(alpha: 0.6),
@@ -911,7 +912,7 @@ class _MealBiteChip extends StatelessWidget {
     return Column(
       children: [
         Container(
-          padding: const EdgeInsets.all(8),
+          padding: EdgeInsets.all(8),
           decoration: BoxDecoration(
             color: isActive
                 ? AppTheme.emerald.withValues(alpha: 0.2)
@@ -920,12 +921,12 @@ class _MealBiteChip extends StatelessWidget {
                   ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
             shape: BoxShape.circle,
             border: isActive
-                ? Border.all(color: AppTheme.emerald, width: 1.5)
+                ? Border.all(color: AppTheme.emerald, width: 1.5.w)
                 : null,
           ),
           child: Icon(
             icon,
-            size: 16,
+            size: 16.sp,
             color: isActive
                 ? AppTheme.emerald
                 : Theme.of(
@@ -933,11 +934,11 @@ class _MealBiteChip extends StatelessWidget {
                   ).colorScheme.onSurface.withValues(alpha: 0.5),
           ),
         ),
-        const SizedBox(height: 6),
+        SizedBox(height: 6.h),
         Text(
           '$bites',
           style: AppTheme.serif(
-            fontSize: 16,
+            fontSize: 16.sp,
             fontWeight: FontWeight.w600,
             color: bites > 0
                 ? AppTheme.caramel
@@ -949,7 +950,7 @@ class _MealBiteChip extends StatelessWidget {
         Text(
           label,
           style: GoogleFonts.figtree(
-            fontSize: 10,
+            fontSize: 10.sp,
             color: Theme.of(
               context,
             ).colorScheme.onSurface.withValues(alpha: 0.5),
@@ -1007,20 +1008,18 @@ class DailyTipCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                padding: const EdgeInsets.all(10),
+                padding: EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   color: AppTheme.sageDeep.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(12.r),
                 ),
                 child: Icon(
-                  (profile?.isLearned ?? false)
-                      ? Icons.auto_awesome
-                      : Icons.lightbulb_outline,
+                  Icons.lightbulb_outline,
                   color: AppTheme.sageDeep,
-                  size: 24,
+                  size: 24.sp,
                 ),
               ),
-              const SizedBox(width: 16),
+              SizedBox(width: 16.w),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1028,17 +1027,17 @@ class DailyTipCard extends StatelessWidget {
                     Text(
                       title,
                       style: GoogleFonts.figtree(
-                        fontSize: 16,
+                        fontSize: 16.sp,
                         fontWeight: FontWeight.bold,
                         color: AppTheme.sageDeep,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    SizedBox(height: 8.h),
                     Text(
                       message,
                       style: GoogleFonts.figtree(
-                        fontSize: 14,
-                        height: 1.5,
+                        fontSize: 14.sp,
+                        height: 1.5.h,
                         color: Theme.of(
                           context,
                         ).colorScheme.onSurface.withValues(alpha: 0.6),
@@ -1084,18 +1083,18 @@ class MotivationCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            padding: const EdgeInsets.all(10),
+            padding: EdgeInsets.all(10),
             decoration: BoxDecoration(
               color: AppTheme.honey.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(12.r),
             ),
-            child: const Icon(
+            child: Icon(
               Icons.favorite_border,
               color: AppTheme.honey,
-              size: 24,
+              size: 24.sp,
             ),
           ),
-          const SizedBox(width: 16),
+          SizedBox(width: 16.w),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1103,17 +1102,17 @@ class MotivationCard extends StatelessWidget {
                 Text(
                   'Motivation',
                   style: GoogleFonts.figtree(
-                    fontSize: 16,
+                    fontSize: 16.sp,
                     fontWeight: FontWeight.bold,
                     color: AppTheme.honey,
                   ),
                 ),
-                const SizedBox(height: 8),
+                SizedBox(height: 8.h),
                 Text(
                   _quoteOfTheDay(),
                   style: GoogleFonts.figtree(
-                    fontSize: 14,
-                    height: 1.5,
+                    fontSize: 14.sp,
+                    height: 1.5.h,
                     fontStyle: FontStyle.italic,
                     color: Theme.of(
                       context,
@@ -1183,12 +1182,12 @@ class _TodayMealsTableState extends State<TodayMealsTable> {
         Text(
           'Today\'s Meals',
           style: GoogleFonts.figtree(
-            fontSize: 18,
+            fontSize: 18.sp,
             fontWeight: FontWeight.bold,
             color: Theme.of(context).colorScheme.onSurface,
           ),
         ),
-        const SizedBox(height: 12),
+        SizedBox(height: 12.h),
         PremiumGlassCard(
           backgroundColor: AppTheme.surface, // keeping table card surface color
 
@@ -1209,7 +1208,7 @@ class _TodayMealsTableState extends State<TodayMealsTable> {
               if (meals.isEmpty) {
                 return Center(
                   child: Padding(
-                    padding: const EdgeInsets.all(20),
+                    padding: EdgeInsets.all(20),
                     child: Text(
                       'No meals recorded today yet.',
                       style: GoogleFonts.figtree(
@@ -1232,7 +1231,7 @@ class _TodayMealsTableState extends State<TodayMealsTable> {
                 itemCount: displayMeals.length,
                 separatorBuilder: (context, index) => Divider(
                   color: Theme.of(context).dividerColor.withValues(alpha: 0.1),
-                  height: 24,
+                  height: 24.h,
                 ),
                 itemBuilder: (context, index) {
                   final meal = displayMeals[index];
@@ -1255,7 +1254,7 @@ class _TodayMealsTableState extends State<TodayMealsTable> {
                       return Row(
                         children: [
                           Container(
-                            padding: const EdgeInsets.all(10),
+                            padding: EdgeInsets.all(10),
                             decoration: BoxDecoration(
                               color: AppTheme.emerald.withValues(alpha: 0.15),
                               shape: BoxShape.circle,
@@ -1263,10 +1262,10 @@ class _TodayMealsTableState extends State<TodayMealsTable> {
                             child: Icon(
                               _getMealIcon(type),
                               color: AppTheme.emerald,
-                              size: 20,
+                              size: 20.sp,
                             ),
                           ),
-                          const SizedBox(width: 12),
+                          SizedBox(width: 12.w),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1277,16 +1276,16 @@ class _TodayMealsTableState extends State<TodayMealsTable> {
                                       type,
                                       style: GoogleFonts.figtree(
                                         fontWeight: FontWeight.bold,
-                                        fontSize: 16,
+                                        fontSize: 16.sp,
                                         color: Theme.of(
                                           context,
                                         ).colorScheme.onSurface,
                                       ),
                                     ),
                                     if (isLive) ...[
-                                      const SizedBox(width: 8),
+                                      SizedBox(width: 8.w),
                                       Container(
-                                        padding: const EdgeInsets.symmetric(
+                                        padding: EdgeInsets.symmetric(
                                           horizontal: 6,
                                           vertical: 2,
                                         ),
@@ -1306,7 +1305,7 @@ class _TodayMealsTableState extends State<TodayMealsTable> {
                                         child: Text(
                                           'LIVE',
                                           style: GoogleFonts.figtree(
-                                            fontSize: 9,
+                                            fontSize: 9.sp,
                                             color: AppTheme.paprika,
                                             fontWeight: FontWeight.bold,
                                           ),
@@ -1315,22 +1314,22 @@ class _TodayMealsTableState extends State<TodayMealsTable> {
                                     ],
                                   ],
                                 ),
-                                const SizedBox(height: 4),
+                                SizedBox(height: 4.h),
                                 Row(
                                   children: [
                                     Icon(
                                       Icons.access_time,
-                                      size: 12,
+                                      size: 12.sp,
                                       color: Theme.of(context)
                                           .colorScheme
                                           .onSurface
                                           .withValues(alpha: 0.5),
                                     ),
-                                    const SizedBox(width: 4),
+                                    SizedBox(width: 4.w),
                                     Text(
                                       '${_formatTime(meal.lastMealStart)} - ${_formatTime(meal.lastMealEnd)} ($duration min)',
                                       style: GoogleFonts.figtree(
-                                        fontSize: 12,
+                                        fontSize: 12.sp,
                                         color: Theme.of(context)
                                             .colorScheme
                                             .onSurface
@@ -1348,7 +1347,7 @@ class _TodayMealsTableState extends State<TodayMealsTable> {
                               Text(
                                 '$displayBites',
                                 style: AppTheme.serif(
-                                  fontSize: 20,
+                                  fontSize: 20.sp,
                                   fontWeight: FontWeight.w600,
                                   color: AppTheme.caramel,
                                 ),
@@ -1356,7 +1355,7 @@ class _TodayMealsTableState extends State<TodayMealsTable> {
                               Text(
                                 'bites',
                                 style: GoogleFonts.figtree(
-                                  fontSize: 12,
+                                  fontSize: 12.sp,
                                   color: Theme.of(context).colorScheme.onSurface
                                       .withValues(alpha: 0.5),
                                 ),

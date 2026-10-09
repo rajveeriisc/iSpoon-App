@@ -1,6 +1,7 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_core_platform_interface/test.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:smartspoon/core/providers/theme_provider.dart';
@@ -49,8 +50,18 @@ void main() {
           ChangeNotifierProvider.value(value: controller),
           ChangeNotifierProvider(create: (_) => NotificationProvider()),
         ],
-        child: const MaterialApp(
-          home: HomePage(initialIndex: 0),
+        // home_cards now uses flutter_screenutil's .sp/.w/.h/.r, and those
+        // throw LateInitializationError outside a ScreenUtilInit subtree.
+        // main.dart wraps MaterialApp in one, so the app is fine; a widget
+        // test that builds HomePage directly has to do the same or every
+        // card on this screen crashes while building.
+        child: ScreenUtilInit(
+          designSize: const Size(393, 852), // must match main.dart
+          minTextAdapt: true,
+          splitScreenMode: true,
+          builder: (_, __) => const MaterialApp(
+            home: HomePage(initialIndex: 0),
+          ),
         ),
       ),
     );
