@@ -131,6 +131,24 @@ class LiveInsightsRepository implements InsightsRepository {
   final DatabaseService _db = DatabaseService();
 
   @override
+  Future<List<MealReport>> getRecentMealReports({int limit = 10}) async {
+    if (_currentUserId.isEmpty) return const [];
+    final meals = await _db.getMeals(
+      userId: _currentUserId,
+      limit: limit,
+      spoonKey: _spoonFilter,
+    );
+    final out = <MealReport>[];
+    for (final m in meals) {
+      // One query per meal. The limit is small and this runs on a screen
+      // load, not per frame.
+      final bites = await _db.getBitesForMeal(m.uuid);
+      out.add(MealReport.from(meal: m, bites: bites));
+    }
+    return out;
+  }
+
+  @override
   Future<MealSummary> getLastMealSummary() async {
     // Try to get the latest meal from DB (for the selected spoon).
     final meals = await _db.getMeals(

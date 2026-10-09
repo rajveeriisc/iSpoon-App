@@ -1,23 +1,43 @@
-// recommendations.dart — coaching/recommendation list widget.
+// recommendations.dart — renders what SuggestionEngine derived, and only that.
 //
-// Recommendations takes TrendData and renders a list of actionable suggestions
-// (e.g. slow down, keep it up) derived from the user's recent eating trends,
-// shown on the Insights dashboard. Purely presentational.
+// This widget used to take TrendData, ignore it, and print two fixed
+// sentences ("Great progress! Tremor decreased this week." and an eating-speed
+// tip) whatever the person had done. It now renders a List<Suggestion> and
+// has no sentences of its own, so there is nothing here that can be true for
+// one person and false for another.
+//
+// Each row shows the measurement it came from. That is deliberate: a claim
+// about someone's eating is only worth reading if they can check it, and it
+// keeps the engine honest — a rule that cannot state its own evidence cannot
+// reach the screen.
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:smartspoon/core/theme/app_theme.dart';
-import '../../domain/models.dart';
+
+import '../../domain/suggestion_engine.dart';
 
 class Recommendations extends StatelessWidget {
-  const Recommendations({super.key, required this.trends});
-  final TrendData? trends;
+  const Recommendations({super.key, required this.suggestions, this.margin});
+
+  final List<Suggestion> suggestions;
+
+  /// Null means the standalone 5%-of-width inset. Callers that already sit
+  /// inside a padded column pass EdgeInsets.zero — the inset used to be
+  /// baked in, which is why this card could only ever live at the top level.
+  final EdgeInsetsGeometry? margin;
 
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // No suggestions is a real answer, not a layout to fill. An empty card
+    // with a heading over nothing reads as a bug, so draw nothing at all.
+    if (suggestions.isEmpty) return const SizedBox.shrink();
+
     return Container(
-      margin: EdgeInsets.symmetric(horizontal: size.width * 0.05),
+      margin: margin ??
+          EdgeInsets.symmetric(horizontal: size.width * 0.05),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: isDark ? AppTheme.darkSurfaceCard : AppTheme.surface,
@@ -39,57 +59,93 @@ class Recommendations extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Personalized Suggestions',
+            'From your meals',
             style: GoogleFonts.figtree(
               fontSize: 16,
               fontWeight: FontWeight.w600,
               color: Theme.of(context).colorScheme.onSurface,
             ),
           ),
-          const SizedBox(height: 8),
-          // Leading Icons rather than '✓' and '⚠️' typed into the string.
-          // Text glyphs take the text font, so they vary by platform, ignore
-          // icon colour and size, and read as emoji rather than as part of
-          // the interface.
-          _Suggestion(
-            icon: Icons.trending_down_rounded,
-            text: 'Great progress! Tremor decreased this week.',
-          ),
-          _Suggestion(
-            icon: Icons.schedule_rounded,
-            text: 'Eating speed: try smaller bites and pauses.',
-          ),
+          const SizedBox(height: 4),
+          for (final s in suggestions) SuggestionRow(suggestion: s),
         ],
       ),
     );
   }
 }
 
-/// One suggestion line: a leading interface icon, then the text.
-class _Suggestion extends StatelessWidget {
-  const _Suggestion({required this.icon, required this.text});
+/// One suggestion: its kind as a leading interface icon, then title, body and
+/// the measurement behind it.
+///
+/// Icons rather than glyphs typed into the string — a text glyph takes the
+/// text font, so it varies by platform, ignores icon colour and size, and
+/// reads as an emoji dropped into the interface rather than part of it.
+class SuggestionRow extends StatelessWidget {
+  const SuggestionRow({super.key, required this.suggestion});
 
-  final IconData icon;
-  final String text;
+  final Suggestion suggestion;
+
+  /// Kind, not individual suggestion: a new rule in the engine must not need
+  /// a matching case here, or the two drift apart and the UI silently decides
+  /// what a suggestion means.
+  static IconData iconFor(SuggestionKind kind) => switch (kind) {
+        SuggestionKind.praise => Icons.check_circle_outline_rounded,
+        SuggestionKind.nudge => Icons.adjust_rounded,
+        SuggestionKind.observation => Icons.insights_rounded,
+        SuggestionKind.learning => Icons.hourglass_empty_rounded,
+      };
+
+  /// The icon carries the distinction, not the colour. AppTheme deliberately
+  /// resolves its decorative accents (honey, sageDeep, emerald) to one brand
+  /// colour, so tinting four kinds four ways would produce four identical
+  /// icons and a false promise that colour means something here. Only
+  /// [AppTheme.success] is semantic, and only praise earns it.
+  static Color colorFor(SuggestionKind kind) =>
+      kind == SuggestionKind.praise ? AppTheme.success : AppTheme.primary;
 
   @override
   Widget build(BuildContext context) {
     final onSurface = Theme.of(context).colorScheme.onSurface;
+    final accent = colorFor(suggestion.kind);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.only(top: 14),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.only(top: 2, right: 8),
-            child: Icon(icon, size: 16, color: onSurface.withValues(alpha: 0.55)),
+            padding: const EdgeInsets.only(top: 2, right: 10),
+            child: Icon(iconFor(suggestion.kind), size: 18, color: accent),
           ),
           Expanded(
-            child: Text(
-              text,
-              style: GoogleFonts.figtree(
-                color: onSurface.withValues(alpha: 0.8),
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  suggestion.title,
+                  style: GoogleFonts.figtree(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: onSurface,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  suggestion.body,
+                  style: GoogleFonts.figtree(
+                    fontSize: 13,
+                    height: 1.4,
+                    color: onSurface.withValues(alpha: 0.8),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  suggestion.evidence,
+                  style: GoogleFonts.figtree(
+                    fontSize: 11,
+                    color: onSurface.withValues(alpha: 0.5),
+                  ),
+                ),
+              ],
             ),
           ),
         ],

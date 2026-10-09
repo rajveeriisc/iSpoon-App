@@ -277,7 +277,10 @@ void main() {
         offs.add(offs.last + g);
       }
       final f = reportOf(offs).intakeCurve!;
+      // A cumulative curve fits a quadratic well whatever its shape, so the
+      // gate is what protects us, not a low R² — this one still scores 0.96.
       expect(f.rSquared, lessThan(0.99));
+      expect(f.isTrustworthy, isFalse);
     });
 
     test('too few bites to fit three coefficients', () {

@@ -292,7 +292,27 @@ class _InsightsDashboardState extends State<InsightsDashboard> {
       dailySummaries: controller.dailySummaries,
     );
 
+    // SuggestionEngine works from one meal's bite timings; InsightGenerator
+    // works from the daily rollups. They answer different questions ("what
+    // happened in your last meal" vs "what has this week looked like"), so
+    // both run, suggestions first — they are the more specific of the two.
+    //
+    // A "no meals recorded yet" suggestion is dropped here, not in the
+    // engine: the screen already has its own empty state below, and the
+    // engine has to be able to say "nothing recorded" to callers that don't.
+    final suggestions = controller.suggestions
+        .where((s) => s.kind != SuggestionKind.learning || s.id != 'no_data')
+        .toList(growable: false);
+
+    final suggestionCard = suggestions.isEmpty
+        ? null
+        : Recommendations(
+            suggestions: suggestions,
+            margin: EdgeInsets.zero,
+          );
+
     if (insights.isEmpty) {
+      if (suggestionCard != null) return [suggestionCard];
       return [
         PremiumGlassCard(
           padding: const EdgeInsets.all(16),
@@ -329,6 +349,10 @@ class _InsightsDashboardState extends State<InsightsDashboard> {
     }
 
     final cards = <Widget>[];
+    if (suggestionCard != null) {
+      cards.add(suggestionCard);
+      cards.add(const SizedBox(height: 12));
+    }
     for (var i = 0; i < insights.length; i++) {
       final insight = insights[i];
       if (i > 0) cards.add(const SizedBox(height: 12));

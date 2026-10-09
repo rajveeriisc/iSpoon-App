@@ -6,6 +6,8 @@ library;
 // Domain layer
 export 'domain/domain.dart';
 export 'domain/models.dart';
+export 'domain/meal_report.dart';
+export 'domain/suggestion_engine.dart';
 export 'domain/insights_repository.dart';
 
 // Infrastructure layer

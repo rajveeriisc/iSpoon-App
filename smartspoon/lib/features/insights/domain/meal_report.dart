@@ -130,9 +130,25 @@ class IntakeCurveFit {
   final double rSquared;
   final int samples;
 
-  /// The original work reported 97–99% of variance explained. Well below
-  /// that, the curvature is not describing this meal.
-  bool get isTrustworthy => rSquared >= 0.90 && samples >= 6;
+  /// The original work reported 97-99% of variance explained, and the
+  /// threshold is set at the top of that band deliberately.
+  ///
+  /// A cumulative curve is monotone and dominated by its linear term, so it
+  /// fits a quadratic well almost regardless of shape. Measured on synthetic
+  /// meals:
+  ///
+  ///     even 10 s gaps            R² 1.0000   accel  0.00
+  ///     decelerating              R² 0.9939   accel -1.91
+  ///     accelerating              R² 0.9952   accel +1.60
+  ///     sped up then slowed       R² 0.9624   accel -1.22
+  ///     slowed then sped up       R² 0.9772   accel -0.00
+  ///
+  /// The last two are exactly the shapes one sign of curvature CANNOT
+  /// represent, and both still clear 0.96. An earlier 0.90 gate therefore
+  /// admitted them and would have reported a satiation figure for a meal the
+  /// model does not describe. 0.99 keeps the three genuine trends and rejects
+  /// both reversals.
+  bool get isTrustworthy => rSquared >= 0.99 && samples >= 6;
 
   /// Negative acceleration on a fit worth believing.
   bool get showsSatiation => isTrustworthy && acceleration < 0;

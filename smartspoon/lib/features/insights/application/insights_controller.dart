@@ -12,6 +12,8 @@ import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../domain/insights_repository.dart';
 import '../domain/models.dart';
+import '../domain/suggestion_engine.dart';
+import '../../ai_lab/domain/services/personalized_eating_model.dart';
 import '../infrastructure/live_insights_repository.dart';
 import '../domain/services/unified_data_service.dart';
 import '../../../../core/services/sync_service.dart';
@@ -34,6 +36,7 @@ class InsightsController with ChangeNotifier {
   TrendData? _trends;
   List<DailyBiteSummary> _dailySummaries = const [];
   List<DailyTremorSummary> _tremorSummaries = const [];
+  List<Suggestion> _suggestions = const [];
 
   StreamSubscription? _tempSub;
   StreamSubscription? _tremorSub;
@@ -105,6 +108,12 @@ class InsightsController with ChangeNotifier {
 
   List<DailyTremorSummary> get tremorSummaries => _tremorSummaries;
 
+  /// Suggestions SuggestionEngine derived from this spoon's recent meals and
+  /// the per-person baseline. Empty, or a single "no meals yet" entry, when
+  /// the measurements do not support saying anything — the engine is allowed
+  /// to stay quiet and the UI must respect that rather than filling the gap.
+  List<Suggestion> get suggestions => _suggestions;
+
   /// Tracks the spoon the loaded history belongs to, so a spoon switch triggers
   /// a reload rather than just a repaint of the wrong spoon's data.
   String? _lastSpoonKey;
@@ -137,6 +146,7 @@ class InsightsController with ChangeNotifier {
     _trends = null;
     _dailySummaries = const [];
     _tremorSummaries = const [];
+    _suggestions = const [];
     _cloudRestoreAttempted = false;
     notifyListeners();
   }
@@ -172,6 +182,14 @@ class InsightsController with ChangeNotifier {
       }
       await fetchHistory(90);
     });
+    // A meal ending is what changes the suggestions, and the per-person model
+    // is the thing that learns about it (recordMeal notifies at meal end).
+    // Without this the Insights tab would keep showing advice derived from the
+    // meal before last until something else forced a refetch.
+    PersonalizedEatingModel()
+      ..removeListener(_onProfileChanged)
+      ..addListener(_onProfileChanged);
+
     // Refresh tremor summaries every 30 seconds for real-time table updates
     _tremorRefreshTimer?.cancel();
     _tremorRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
@@ -266,8 +284,63 @@ class InsightsController with ChangeNotifier {
       }
     }
 
+    await _refreshSuggestions();
+
     notifyListeners();
   }
+
+  bool _suggestionRefreshInFlight = false;
+
+  void _onProfileChanged() {
+    // The model notifies for hand preference and persistence too, not only for
+    // a finished meal, so coalesce: one refresh at a time, and the listener
+    // never awaits.
+    if (_suggestionRefreshInFlight) return;
+    unawaited(() async {
+      _suggestionRefreshInFlight = true;
+      try {
+        await _refreshSuggestions();
+        // The model is a singleton that outlives this controller, so the
+        // screen can be torn down while this read is in flight.
+        if (!_disposed) notifyListeners();
+      } finally {
+        _suggestionRefreshInFlight = false;
+      }
+    }());
+  }
+
+  /// Re-derives [suggestions] from the spoon's recent meals.
+  ///
+  /// Reads per-meal bite timings rather than the daily rollups the charts use,
+  /// because every microstructure measure the engine relies on — satiation,
+  /// pause structure, within-meal steadiness drift, cooling rate — only exists
+  /// at the level of one meal's bite sequence. A rollup has already averaged
+  /// them away.
+  Future<void> _refreshSuggestions() async {
+    final key = _unifiedDataService?.selectedSpoonKey ?? '';
+    try {
+      final reports = await _repository.getRecentMealReports(
+        limit: _suggestionMealWindow,
+      );
+      _suggestions = SuggestionEngine.build(
+        recentMeals: reports,
+        profile:
+            key.isEmpty ? null : PersonalizedEatingModel().profileFor(key),
+      );
+    } catch (e) {
+      // Same reasoning as loadRange: a failed read is not evidence that the
+      // person has eaten nothing, and the engine's "no meals recorded yet"
+      // card would claim exactly that. Keep the last good list.
+      if (kDebugMode) {
+        print('[IC] Suggestion refresh failed, keeping previous list: $e');
+      }
+    }
+  }
+
+  /// Meals the engine looks back over. Its trend rule needs
+  /// [SuggestionEngine.minMealsForTrend]; more than this and a fortnight-old
+  /// meal starts dragging on a line meant to describe the current week.
+  static const int _suggestionMealWindow = 10;
 
   bool _isSyncing = false;
   bool get isSyncing => _isSyncing;
@@ -326,8 +399,11 @@ class InsightsController with ChangeNotifier {
     });
   }
 
+  bool _disposed = false;
+
   @override
   void dispose() {
+    _disposed = true;
     _tremorRefreshTimer?.cancel();
     _tempSub?.cancel();
     _tremorSub?.cancel();
@@ -335,6 +411,7 @@ class InsightsController with ChangeNotifier {
     _envSub?.cancel();
     _authSub?.cancel();
     _unifiedDataService?.removeListener(_onUnifiedDataChanged);
+    PersonalizedEatingModel().removeListener(_onProfileChanged);
     super.dispose();
   }
 

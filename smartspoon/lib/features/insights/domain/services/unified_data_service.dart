@@ -10,6 +10,7 @@
 // kills, and exposes the per-device getters the home/insights cards read.
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/widgets.dart';
 import 'package:uuid/uuid.dart';
@@ -1059,9 +1060,23 @@ class UnifiedDataService extends ChangeNotifier with WidgetsBindingObserver {
 
   // ─── EATING ALERTS ───────────────────────────────────────────────────────────
   // Thresholds
+  //
+  // These two are the FALLBACK pair, used only until the per-person model can
+  // personalize. A fixed 25 bites/min is wrong in both directions: someone
+  // whose ordinary lunch runs at 28 would be told off at every meal, and
+  // someone whose ordinary pace is 8 could double it without ever crossing
+  // 25. _speedAlertBand() derives the real pair from this eater's own
+  // baseline once there is one.
   static const double _fastEatingThreshold = 25.0; // bites/min — alert ON
   static const double _fastEatingClearThreshold =
       18.0; // bites/min — alert OFF (hysteresis)
+
+  /// Where the personalized alert clears, in standard deviations above this
+  /// eater's baseline. It arms at [PersonalizedEatingModel.zFlag] (2.0), so
+  /// this keeps the same hysteresis gap the fixed pair had — 18 of 25 is 0.72
+  /// of the arming threshold, and 1.0 of 2.0 sigma is a comparable step back
+  /// expressed in the person's own spread instead of absolute bites.
+  static const double _speedAlertClearZ = 1.0;
   static const double _hotFoodThreshold = 60.0; // °C
   static const double _veryHotFoodThreshold = 70.0; // °C
   static const double _tremorAlertThreshold = 1.5; // score 0–3
@@ -1069,6 +1084,51 @@ class UnifiedDataService extends ChangeNotifier with WidgetsBindingObserver {
   // Hysteresis state — prevents the speed alert from re-firing on every bite
   // while the user is already eating fast.
   bool _speedAlertActive = false;
+
+  /// The speed band for the spoon in this session, and the phrase the alert
+  /// uses to justify itself.
+  ///
+  /// Personalized once the model can personalize, because "too fast" only
+  /// means anything relative to how this person normally eats, and against
+  /// the baseline for THIS meal type — breakfast and dinner paces differ
+  /// enough in practice that one daily average fires on the wrong meal.
+  /// Until then the fixed pair stands in, and the alert says so rather than
+  /// implying a personal reading it does not have.
+  ({double arm, double clear, String reference}) _speedAlertBand() {
+    final key = spoonKeyFor(_sessionDeviceId);
+    return speedAlertBandFor(
+      key.isEmpty ? null : PersonalizedEatingModel().profileFor(key),
+      at: DateTime.now(),
+    );
+  }
+
+  /// The band itself, as a function of the profile and the clock — separated
+  /// from the singletons above so the thresholds can actually be checked
+  /// against a known profile rather than only in a running app.
+  @visibleForTesting
+  static ({double arm, double clear, String reference}) speedAlertBandFor(
+    PersonalizedProfile? p, {
+    required DateTime at,
+  }) {
+    if (p == null || !p.canPersonalize) {
+      return (
+        arm: _fastEatingThreshold,
+        clear: _fastEatingClearThreshold,
+        reference: 'above the general guide of '
+            '${_fastEatingThreshold.toStringAsFixed(0)}',
+      );
+    }
+    final mealType = PersonalizedEatingModel.mealTypeForHour(at.hour);
+    final baseline = p.baselinePaceFor(mealType);
+    final std =
+        math.max(p.paceStd, PersonalizedEatingModel.paceStdFloor);
+    return (
+      arm: baseline + PersonalizedEatingModel.zFlag * std,
+      clear: baseline + _speedAlertClearZ * std,
+      reference: 'your usual ${mealType.toLowerCase()} is about '
+          '${baseline.toStringAsFixed(0)}',
+    );
+  }
 
   /// Fires in-app overlay when foreground, OS notification when backgrounded.
   /// Called after every bite is recorded.
@@ -1080,31 +1140,36 @@ class UnifiedDataService extends ChangeNotifier with WidgetsBindingObserver {
     //   Arms   when speed crosses ABOVE 25 bpm  → show alert once.
     //   Clears when speed drops  BELOW 18 bpm   → ready to arm again.
     // This prevents the alert from re-firing on every bite while already fast.
+    final band = _speedAlertBand();
+    // The pace that tripped the alert and the pace quoted in it must come
+    // from the SAME session. This read used to be _sessionDeviceId for the
+    // comparison and primaryDeviceId for the message, so with two spoons
+    // paired the alert could name a figure that had nothing to do with why
+    // it fired.
+    final speed = getSession(_sessionDeviceId).smoothedSpeedBpm;
     final wasActive = _speedAlertActive;
-    if (getSession(_sessionDeviceId).smoothedSpeedBpm > _fastEatingThreshold) {
+    if (speed > band.arm) {
       _speedAlertActive = true;
-    } else if (getSession(_sessionDeviceId).smoothedSpeedBpm <
-        _fastEatingClearThreshold) {
+    } else if (speed < band.clear) {
       _speedAlertActive = false;
     }
 
     if (_speedAlertActive && !wasActive) {
+      final observed = speed.toStringAsFixed(0);
       if (context != null && context.mounted) {
         InAppAlertService().show(
           context,
           InAppAlert(
-            title: 'Eating Too Fast',
-            body:
-                'Slow down — ${getSession(primaryDeviceId ?? "").smoothedSpeedBpm.toStringAsFixed(0)} bites/min (aim for <20)',
+            title: 'Faster than usual',
+            body: 'Slow down — $observed bites/min, ${band.reference}',
             severity: AlertSeverity.warning,
           ),
           throttleKey: 'speed_alert',
         );
       } else {
         NotificationService().showLocalAlert(
-          title: 'Eating Too Fast',
-          body:
-              '${getSession(primaryDeviceId ?? "").smoothedSpeedBpm.toStringAsFixed(0)} bites/min — try to slow down',
+          title: 'Faster than usual',
+          body: '$observed bites/min, ${band.reference}',
           type: 'eating_alerts',
           priority: 'HIGH',
         );

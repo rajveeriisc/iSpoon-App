@@ -965,6 +965,10 @@ class _MealBiteChip extends StatelessWidget {
 class DailyTipCard extends StatelessWidget {
   const DailyTipCard({super.key});
 
+  /// Last resort only: shown when the spoon has measured nothing for this
+  /// person yet, so there is no meal to say anything about. Every branch
+  /// above this one comes from their own data. These are general mindful-
+  /// eating practice, written so none of them claims to be about the reader.
   static const List<String> _tips = [
     'Mindful eating can help you recognize true hunger and fullness cues more effectively.',
     'Try putting your spoon down between bites — it gives your brain time to register fullness.',
@@ -984,8 +988,20 @@ class DailyTipCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Personalize when the per-person model has learned (or is learning) the
-    // selected spoon-owner's habits; otherwise fall back to the generic tip.
+    // Three sources, in descending order of how specific they are to this
+    // person, and the card takes the first one that has something to say:
+    //
+    //   1. SuggestionEngine — the top suggestion from their actual recent
+    //      meals (satiation, pause structure, pace against their own
+    //      baseline). This is the only source that can describe what they
+    //      just did.
+    //   2. PersonalizedEatingModel.personalizedTip — their learned baseline,
+    //      or how far off being able to personalise it still is. Available
+    //      after one meal, before the engine has enough to find a pattern.
+    //   3. The rotating general tip, for a spoon that has measured nothing.
+    //
+    // It used to be 2 then 3, which meant a person with twenty meals of
+    // history still only ever read their average pace back to themselves.
     return ListenableBuilder(
       listenable: PersonalizedEatingModel(),
       builder: (context, _) {
@@ -996,12 +1012,29 @@ class DailyTipCard extends StatelessWidget {
             PersonalizedEatingModel().personalizedTip(spoonKey);
         final profile = PersonalizedEatingModel().profileFor(spoonKey);
         final isPersonalized = personalized != null;
-        final title = (profile?.isLearned ?? false)
-            ? 'Personalized Insight'
-            : isPersonalized
-                ? 'Learning Your Habits'
-                : 'Daily Tip';
-        final message = personalized ?? _tipOfTheDay();
+
+        // The engine's own "no meals recorded yet" card is not a tip — it
+        // says the same thing as having no data at all, so it falls through
+        // to the sources below instead of displacing them.
+        final suggestion = context
+            .watch<InsightsController>()
+            .suggestions
+            .where((s) => s.id != 'no_data')
+            .firstOrNull;
+
+        final String title;
+        final String message;
+        if (suggestion != null) {
+          title = suggestion.title;
+          message = suggestion.body;
+        } else {
+          title = (profile?.isLearned ?? false)
+              ? 'Personalized Insight'
+              : isPersonalized
+                  ? 'Learning Your Habits'
+                  : 'Daily Tip';
+          message = personalized ?? _tipOfTheDay();
+        }
 
         return PremiumGlassCard(
           child: Row(

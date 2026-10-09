@@ -7,6 +7,7 @@
 // bite/tremor summaries, meals-for-date). The live implementation lives in
 // infrastructure/live_insights_repository.dart.
 import 'dart:async';
+import 'meal_report.dart';
 import 'models.dart';
 
 abstract class LiveTelemetrySource {
@@ -36,4 +37,12 @@ abstract class InsightsRepository {
 
   /// Fetch detailed meal records for a specific date (for analysis page)
   Future<List<MealSummary>> getMealsForDate(DateTime date);
+
+  /// Recent meals rebuilt from their own stored bites, newest first.
+  ///
+  /// This is what the suggestion engine reads. It needs the per-bite detail —
+  /// gaps, steadiness at each bite, food temperature — not the rolled-up
+  /// meal row, because the suggestions are about how a meal went, not its
+  /// totals.
+  Future<List<MealReport>> getRecentMealReports({int limit});
 }
