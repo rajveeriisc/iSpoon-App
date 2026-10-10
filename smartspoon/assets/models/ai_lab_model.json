@@ -193,5 +193,20 @@
     "mouthWindowSamples": 60,
     "mouthLagSamples": 200,
     "verdictDeadlineSamples": 400
+  },
+  "motionGate": {
+    "enforce": true,
+    "lookbackSamples": 500,
+    "quietSamples": 20,
+    "maxQuietDps": 25.0,
+    "maxMeanDps": 110.0,
+    "measured": {
+      "eatingBitesKept": "359/359",
+      "eatingSessions": 18,
+      "spoons": 2,
+      "nonEatingFalseBitesBefore": 25,
+      "nonEatingFalseBitesAfter": 0,
+      "nonEatingSeconds": 91
+    }
   }
 }

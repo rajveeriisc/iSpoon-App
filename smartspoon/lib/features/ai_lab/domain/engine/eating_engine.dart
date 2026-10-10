@@ -5,8 +5,11 @@
 import 'dart:collection';
 
 import 'package:smartspoon/features/ai_lab/domain/engine/ai_lab_model.dart';
+import 'dart:math' as math;
+
 import 'package:smartspoon/features/ai_lab/domain/engine/bite_cycle_tracker.dart';
 import 'package:smartspoon/features/ai_lab/domain/engine/bite_detector.dart';
+import 'package:smartspoon/features/ai_lab/domain/engine/bite_motion_gate.dart';
 import 'package:smartspoon/features/ai_lab/domain/engine/bite_features.dart';
 import 'package:smartspoon/features/ai_lab/domain/engine/handedness.dart';
 import 'package:smartspoon/features/ai_lab/domain/engine/imu_window.dart';
@@ -58,6 +61,13 @@ class EatingEngine {
   late final BiteDetector _detector;
   late final SteadinessAnalyzer _steadiness;
   late final BiteCycleTracker _cycle;
+  late final BiteMotionGate _motionGate = BiteMotionGate(model.motionGate);
+
+  /// Classifier hits the motion gate refused, since the engine was created.
+  int motionGateRejections = 0;
+
+  /// The most recent refusal, for diagnostics.
+  MotionGateVerdict? lastMotionGateRejection;
 
   /// Where in the eating cycle the spoon is, for the live phase chip.
   /// Distinct from `tracker.phase`, which is the MEAL phase.
@@ -116,12 +126,14 @@ class EatingEngine {
       _detector.reset();
       _steadiness.reset();
       _cycle.reset();
+      _motionGate.reset();
       _recentWindows.clear();
       _held.clear();
       _ready.clear();
       _segmentStart = row;
     }
     _cycle.add(_window, _window.newest);
+    _motionGate.add(math.sqrt(gx * gx + gy * gy + gz * gz));
 
     final window = _steadiness.add(gx, gy, gz);
     if (window != null) {
@@ -155,7 +167,17 @@ class EatingEngine {
     Hand? decided;
     final decision = BiteFeatures.due(_window);
     if (decision != null) {
-      final hit = _detector.add(decision);
+      var hit = _detector.add(decision);
+      if (hit != null && model.motionGate.enforce) {
+        // The classifier judges one lift; this judges whether the seconds
+        // around it were eating at all. See bite_motion_gate.dart.
+        final v = _motionGate.evaluate();
+        if (!v.accepted) {
+          motionGateRejections++;
+          lastMotionGateRejection = v;
+          hit = null;
+        }
+      }
       if (hit != null) {
         detectedRows.add(_segmentStart + hit.t);
         decided = hit.decidedHand;

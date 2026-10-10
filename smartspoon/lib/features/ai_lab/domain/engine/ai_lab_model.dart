@@ -177,6 +177,52 @@ class ModelEvaluation {
 
 /// Thresholds for the bite-cycle phase machine (see BiteCycleTracker).
 ///
+/// Thresholds for BiteMotionGate, under "motionGate" in the model JSON.
+///
+/// The two limits are the ~99.5th percentile of 359 real bites (two spoons,
+/// eighteen sessions): quietest 200 ms 18.9 deg/s, mean rotation over the
+/// lookback 111.2 deg/s. [maxQuietDps] sits a little above its percentile
+/// because the cost of a miss there is a lost real bite, and the mean test
+/// already rejects everything the quiet test lets through.
+class MotionGateConfig {
+  const MotionGateConfig({
+    this.enforce = true,
+    this.lookbackSamples = 500,
+    this.quietSamples = 20,
+    this.maxQuietDps = 25.0,
+    this.maxMeanDps = 110.0,
+  });
+
+  factory MotionGateConfig.fromJson(Map<String, dynamic>? j) {
+    if (j == null) return const MotionGateConfig();
+    const d = MotionGateConfig();
+    return MotionGateConfig(
+      enforce: j['enforce'] as bool? ?? d.enforce,
+      lookbackSamples:
+          (j['lookbackSamples'] as num?)?.toInt() ?? d.lookbackSamples,
+      quietSamples: (j['quietSamples'] as num?)?.toInt() ?? d.quietSamples,
+      maxQuietDps: (j['maxQuietDps'] as num?)?.toDouble() ?? d.maxQuietDps,
+      maxMeanDps: (j['maxMeanDps'] as num?)?.toDouble() ?? d.maxMeanDps,
+    );
+  }
+
+  /// False counts every classifier hit, as before the gate existed.
+  final bool enforce;
+
+  /// History judged, in samples: 5 s at 100 Hz.
+  ///
+  /// Long enough to hold a whole bite including its stop in the mouth. Run
+  /// through the engine on all eighteen eating sessions, 4 s lost 2 of 359
+  /// real bites whose stop fell just outside it; 5 s lost none.
+  final int lookbackSamples;
+
+  /// Length of the still moment looked for (200 ms).
+  final int quietSamples;
+
+  final double maxQuietDps;
+  final double maxMeanDps;
+}
+
 /// Lives under "biteCycle" in the model JSON so it travels with the model
 /// rather than being hardcoded in logic — the same pattern as
 /// [SteadinessReference.minMotionRmsDps]. Every field has a documented default
@@ -345,6 +391,7 @@ class AiLabModel {
     required this.evaluation,
     required this.steadiness,
     this.biteCycle = const BiteCycleConfig(),
+    this.motionGate = const MotionGateConfig(),
   });
 
   factory AiLabModel.fromJson(Map<String, dynamic> j) => AiLabModel(
@@ -364,6 +411,8 @@ class AiLabModel {
             j['steadiness'] as Map<String, dynamic>),
         biteCycle:
             BiteCycleConfig.fromJson(j['biteCycle'] as Map<String, dynamic>?),
+        motionGate: MotionGateConfig.fromJson(
+            j['motionGate'] as Map<String, dynamic>?),
       );
 
   static AiLabModel parse(String json) =>
@@ -392,4 +441,7 @@ class AiLabModel {
   /// Phase-machine thresholds. Defaults apply when the model file has no
   /// "biteCycle" object.
   final BiteCycleConfig biteCycle;
+
+  /// Stillness-and-agitation check applied to every proposed bite.
+  final MotionGateConfig motionGate;
 }
