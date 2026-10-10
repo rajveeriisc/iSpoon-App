@@ -48,13 +48,39 @@ const connectionString = (() => {
   }
 })();
 
+// Measured from the Mumbai VPS against the Singapore Neon endpoint:
+//
+//   cold (TCP + TLS + auth + query)  494 ms
+//   warm (connection reused)          66 ms
+//   penalty                          428 ms
+//
+// The pool used to drop idle connections after 30 s, so any user opening the
+// app after a quiet minute paid that 428 ms on their first request — which is
+// most requests for an app used in meal-length bursts. Holding connections
+// longer is the single largest latency win available without moving the
+// database into the same region as the server.
+//
+// IDLE_TIMEOUT_MS is deliberately just under Neon's 5-minute autosuspend
+// rather than "as long as possible": an open connection keeps the Neon
+// compute awake, and pinning it 24/7 would burn far more compute hours than
+// a free-tier allowance covers. Four minutes keeps a meal session warm
+// throughout without keeping the database awake any longer than the activity
+// itself already does. Raise it if the Neon plan is paid and always-on.
+const IDLE_TIMEOUT_MS = Number(process.env.DB_IDLE_TIMEOUT_MS || 240_000);
+
 export const pool = new Pool({
   connectionString,
   ssl: shouldUseSSL ? { rejectUnauthorized } : false,
   // Connection pool configuration
   max: 10, // Maximum pool size
-  idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
+  idleTimeoutMillis: IDLE_TIMEOUT_MS,
   connectionTimeoutMillis: 10000, // Return error after 10 seconds if connection cannot be established
+  // Without TCP keepalives a connection held open across a NAT or a cloud
+  // firewall can be silently discarded mid-flight. The pool would then hand
+  // out a dead socket and the request hangs until connectionTimeoutMillis
+  // instead of failing fast or reconnecting.
+  keepAlive: true,
+  keepAliveInitialDelayMillis: 30_000,
 });
 
 // Handle idle client errors and attempt recovery
