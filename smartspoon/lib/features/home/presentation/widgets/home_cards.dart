@@ -1036,47 +1036,41 @@ class DailyTipCard extends StatelessWidget {
           message = personalized ?? _tipOfTheDay();
         }
 
+        // No icon. A decorative glyph in a tinted rounded square is the
+        // single most recognisable "generated app" tell — it carries no
+        // information, competes with the number the card exists to show, and
+        // every template uses the same lightbulb for anything called an
+        // insight. The category label does that job in type instead, which is
+        // what measurement dashboards actually do.
         return PremiumGlassCard(
-          child: Row(
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                padding: EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: AppTheme.sageDeep.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12.r),
-                ),
-                child: Icon(
-                  Icons.lightbulb_outline,
-                  color: AppTheme.sageDeep,
-                  size: 24.sp,
+              Text(
+                title.toUpperCase(),
+                style: GoogleFonts.figtree(
+                  fontSize: 11.sp,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.8,
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.45),
                 ),
               ),
-              SizedBox(width: 16.w),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: GoogleFonts.figtree(
-                        fontSize: 16.sp,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.sageDeep,
-                      ),
-                    ),
-                    SizedBox(height: 8.h),
-                    Text(
-                      message,
-                      style: GoogleFonts.figtree(
-                        fontSize: 14.sp,
-                        height: 1.5.h,
-                        color: Theme.of(
-                          context,
-                        ).colorScheme.onSurface.withValues(alpha: 0.6),
-                      ),
-                    ),
-                  ],
+              SizedBox(height: 8.h),
+              Text(
+                message,
+                style: GoogleFonts.figtree(
+                  fontSize: 15.sp,
+                  height: 1.45.h,
+                  // Raised from 0.6: with the label demoted to a quiet
+                  // caption, the sentence is now the card's subject and has
+                  // to read as primary text rather than as a footnote.
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.9),
                 ),
               ),
             ],
@@ -1111,51 +1105,21 @@ class MotivationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The heart chip goes for the same reason as the lightbulb on the card
+    // above. The quote is already wrapped in quotation marks and set in
+    // italic, so it reads as a quote without a glyph announcing the
+    // sentiment, and no "Motivation" heading is needed to label something
+    // that is self-evidently a pull quote.
     return PremiumGlassCard(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: AppTheme.honey.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(12.r),
-            ),
-            child: Icon(
-              Icons.favorite_border,
-              color: AppTheme.honey,
-              size: 24.sp,
-            ),
-          ),
-          SizedBox(width: 16.w),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Motivation',
-                  style: GoogleFonts.figtree(
-                    fontSize: 16.sp,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.honey,
-                  ),
-                ),
-                SizedBox(height: 8.h),
-                Text(
-                  _quoteOfTheDay(),
-                  style: GoogleFonts.figtree(
-                    fontSize: 14.sp,
-                    height: 1.5.h,
-                    fontStyle: FontStyle.italic,
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.onSurface.withValues(alpha: 0.6),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+      child: Text(
+        _quoteOfTheDay(),
+        style: GoogleFonts.figtree(
+          fontSize: 14.sp,
+          height: 1.55.h,
+          fontStyle: FontStyle.italic,
+          color:
+              Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+        ),
       ),
     ).animate().fadeIn(delay: 800.ms).slideY(begin: 0.1, end: 0);
   }

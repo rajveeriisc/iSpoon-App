@@ -71,19 +71,10 @@ class _Header extends StatelessWidget {
     final live = data.streaming;
     final chipColor = live ? kSteadyGreen : Colors.grey;
     return Row(children: [
-      Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [theme.colorScheme.primary, theme.colorScheme.secondary],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: const Icon(Icons.psychology_alt_rounded, color: Colors.white, size: 24),
-      ),
-      const SizedBox(width: 12),
+      // A brain glyph on a gradient tile was the strongest generated-app tell
+      // in the app: the gradient says nothing about the data, and a brain
+      // overstates what this is — a motion model counting bites, not a mind.
+      // The product name carries the header on its own.
       Expanded(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('Mealsense',

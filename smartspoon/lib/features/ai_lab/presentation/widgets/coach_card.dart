@@ -43,7 +43,11 @@ class _TipRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final (icon, color) = switch (tip.kind) {
-      TipKind.nudge => (Icons.tips_and_updates_rounded, kShakeAmber),
+      // Not tips_and_updates (a lightbulb with sparkles): the sparkle-bulb is
+      // the stock "AI suggestion" glyph every template ships with. This is
+      // the same icon SuggestionRow uses for a nudge, so one kind of advice
+      // looks the same wherever it appears.
+      TipKind.nudge => (Icons.adjust_rounded, kShakeAmber),
       TipKind.positive => (Icons.check_circle_rounded, kSteadyGreen),
       TipKind.info => (Icons.info_rounded, theme.colorScheme.primary),
     };

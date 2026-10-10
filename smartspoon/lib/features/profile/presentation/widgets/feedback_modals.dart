@@ -69,8 +69,9 @@ class _RateAppModalState extends State<_RateAppModal> {
             ),
           ),
           const SizedBox(height: 24),
-          Icon(Icons.favorite, color: AppTheme.paprika, size: 48),
-          const SizedBox(height: 16),
+          // No 48px heart. The question below already asks for goodwill;
+          // illustrating it with a heart is the decoration a template adds
+          // and it reads as a stock prompt rather than as this app asking.
           Text(
             'Enjoying i-Spoon?',
             style: AppTheme.serif(
