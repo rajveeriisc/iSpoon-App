@@ -123,12 +123,28 @@ class SuggestionEngine {
     MealReport m,
     PersonalizedProfile? p,
   ) {
-    final pace = m.bitesPerMin;
-    if (pace == null || p == null || !p.canPersonalize) return const [];
+    if (p == null) return const [];
 
-    final baseline = p.baselinePaceFor(m.meal.mealType);
-    final std = math.max(p.paceStd, PersonalizedEatingModel.paceStdFloor);
-    final z = (pace - baseline) / std;
+    // The verdict taken BEFORE this meal was folded into the baseline, when
+    // there is one for this meal. Recomputing it here would compare the meal
+    // with a baseline that already contains it, which at meal #7 turns a
+    // 4-sigma meal into 1.93 and reports it as ordinary.
+    final stored = p.judgementFor(m.meal.uuid);
+    final double pace, baseline, z;
+    if (stored != null) {
+      pace = stored.observedPace;
+      baseline = stored.baselinePace;
+      z = stored.z;
+    } else {
+      // An older meal, or one recorded before verdicts were stored: the
+      // live figure is the best available and is biased toward "usual".
+      final live = m.bitesPerMin;
+      if (live == null || !p.canPersonalize) return const [];
+      pace = live;
+      baseline = p.baselinePaceFor(m.meal.mealType);
+      z = (pace - baseline) /
+          math.max(p.paceStd, PersonalizedEatingModel.paceStdFloor);
+    }
     final obs = pace.toStringAsFixed(0);
     final usual = baseline.toStringAsFixed(0);
     final ev = 'this meal $obs bites/min, your usual $usual, '
@@ -153,8 +169,7 @@ class SuggestionEngine {
           id: 'pace_slow_vs_self',
           kind: SuggestionKind.praise,
           title: 'Slower than your usual',
-          body: '$obs bites a minute against your usual $usual. That extra '
-              'time is what lets you notice you are full.',
+          body: '$obs bites a minute against your usual $usual.',
           evidence: ev,
           priority: 70,
         ),
@@ -205,7 +220,8 @@ class SuggestionEngine {
           kind: SuggestionKind.nudge,
           title: 'You sped up towards the end',
           body: 'Your pace rose through the meal instead of easing off. '
-              'Slowing the last few bites gives fullness time to register.',
+              'If you want a more even pace, the last few bites are where '
+              'it changed.',
           evidence: ev,
           priority: 80,
         ),

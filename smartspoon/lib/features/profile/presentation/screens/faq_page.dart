@@ -83,9 +83,9 @@ const List<_FaqEntry> _allFaqs = [
   _FaqEntry(
     category: 'Eating',
     icon: const Icon(Icons.warning_amber_rounded),
-    question: 'What does the "Eating Too Fast" alert mean?',
+    question: 'What does the "Faster than usual" alert mean?',
     answer:
-        'When your eating speed exceeds 25 bites/min, an alert appears at the top of the screen. Eating slowly (20+ minutes per meal) helps with digestion and lets your body signal fullness in time. Try to pause between bites.',
+        'It appears when your pace during a meal is well above your own usual pace for that kind of meal — breakfast, lunch and dinner are each compared with themselves. Until the app has learned your usual pace (meals on at least three days), it uses a general guide of 25 bites/min instead. Resting the spoon between bites brings the pace back down.',
   ),
   _FaqEntry(
     category: 'Eating',

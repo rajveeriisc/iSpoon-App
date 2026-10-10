@@ -221,7 +221,7 @@ class NotificationProvider with ChangeNotifier {
       ('i-Spoon', 'Your data has been synced successfully!'),
       ('Eating Reminder', 'Time for your next meal check-in!'),
       ('Great Job!', 'You\'ve completed your daily bite goal today.'),
-      ('Health Tip', 'Eating slowly helps digestion — keep it up!'),
+      ('Eating pace', 'Your recent meals are in the Insights tab.'),
     ];
     final pick = messages[DateTime.now().second % messages.length];
     final newNotif = NotificationModel(

@@ -32,6 +32,8 @@ PersonalizedProfile _profile({
       avgPaceBpm: pace,
       paceVar: paceVar,
       paceUpdates: meals - 1,
+      // A profile is only personalised once its meals span several days.
+      distinctDays: meals,
       byMealType: byMealType,
     );
 

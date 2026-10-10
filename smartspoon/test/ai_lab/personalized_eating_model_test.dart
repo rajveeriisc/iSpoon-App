@@ -15,6 +15,11 @@ double _gauss(math.Random r, double mean, double sd) {
   return mean + sd * math.sqrt(-2 * math.log(u1)) * math.cos(2 * math.pi * u2);
 }
 
+/// One simulated meal per calendar day. The model will not personalise from
+/// meals that all fall on one day, so a history fed with the default "now"
+/// would never unlock however long it was.
+var _day = 0;
+
 Future<void> _feed(
   PersonalizedEatingModel m,
   String key,
@@ -29,6 +34,7 @@ Future<void> _feed(
       durationMinutes: bites / pace,
       tremor: 0.2,
       mealType: type,
+      at: DateTime(2026, 1, 1).add(Duration(days: _day++)),
     );
 
 void main() {

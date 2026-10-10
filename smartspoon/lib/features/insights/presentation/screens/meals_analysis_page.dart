@@ -459,7 +459,7 @@ class _MealsAnalysisPageState extends State<MealsAnalysisPage> {
           SizedBox(width: 10 * scale),
           Expanded(
             child: Text(
-              'Speed is measured in bites per minute. A steady pace aids better digestion.',
+              'Speed is measured in bites per minute.',
               style: GoogleFonts.figtree(
                 fontSize: (12 * scale).clamp(10, 15),
                 color: Theme.of(

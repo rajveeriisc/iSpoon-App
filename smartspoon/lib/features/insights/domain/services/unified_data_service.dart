@@ -1832,6 +1832,8 @@ class UnifiedDataService extends ChangeNotifier with WidgetsBindingObserver {
   /// Drop in-memory patient state so a second account on the same device
   /// cannot inherit the previous user's live totals or Insights cache.
   void resetForUserChange() {
+    // The learned baseline belongs to the account, not to the phone.
+    unawaited(PersonalizedEatingModel().reloadForUser());
     for (final session in _sessions.values) {
       session.sessionInactivityTimer?.cancel();
       session.sessionStartTime = null;
@@ -2005,6 +2007,10 @@ class UnifiedDataService extends ChangeNotifier with WidgetsBindingObserver {
           // separate pace baseline per type and pools it toward the overall
           // mean until that type has enough samples of its own.
           mealType: capturedMealType,
+          // Lets the verdict taken before the baseline moved be matched back
+          // to this meal when it is shown.
+          mealUuid: meal.uuid,
+          at: capturedStartTime,
         ));
       }
 

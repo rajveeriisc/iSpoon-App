@@ -187,7 +187,7 @@ class InsightGenerator {
         type: 'Eating Speed Alert',
         title: 'Pace increased by $pct%',
         message:
-            'Try to slow down and chew more thoroughly for better digestion.',
+            'Resting the spoon between bites is the simplest way to slow down.',
         accentColor: AppTheme.honey,
         actionLabel: 'View eating pattern',
       );
@@ -198,7 +198,7 @@ class InsightGenerator {
       type: 'Nice Pacing',
       title: 'Eating pace slowed by $pct%',
       message:
-          'You\'ve been taking your time at meals this week compared to last — great for digestion.',
+          'You\'ve been taking your time at meals this week compared to last.',
       accentColor: AppTheme.sageDeep,
       actionLabel: 'View eating pattern',
     );

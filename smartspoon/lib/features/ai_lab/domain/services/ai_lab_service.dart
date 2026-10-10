@@ -470,7 +470,7 @@ class AiLabService extends ChangeNotifier implements AiLabActions {
       start = last.start;
       end = last.end;
       metrics = _finishedMetrics ?? _metricsOf(last);
-      tips = _withPersonalTip(_finishedTips, metrics);
+      tips = _withPersonalTip(_finishedTips, metrics, finishedAt: last.end);
     } else {
       tips = _idleTips();
     }
@@ -587,7 +587,12 @@ class AiLabService extends ChangeNotifier implements AiLabActions {
   /// had no callers, so every tip on this page was the same population rule
   /// for everybody. This is the one piece of coaching that is actually about
   /// the person using the spoon, so it leads when it is available.
-  List<CoachTip> _withPersonalTip(List<CoachTip> base, MealMetrics? m) {
+  /// [finishedAt] is set for a meal that has ended. During a meal the live
+  /// comparison is right — the baseline does not contain this meal yet. Once
+  /// it has ended and been recorded, it does, so the verdict the model took
+  /// before updating is used instead.
+  List<CoachTip> _withPersonalTip(List<CoachTip> base, MealMetrics? m,
+      {DateTime? finishedAt}) {
     final pace = m?.bitesPerMin;
     // bitesPerMin is already null under 30 s; a handful of bites is still too
     // few for the rate to be meaningful.
@@ -596,8 +601,18 @@ class AiLabService extends ChangeNotifier implements AiLabActions {
     }
     final mealType =
         PersonalizedEatingModel.mealTypeForHour(DateTime.now().hour);
-    final j = PersonalizedEatingModel()
-        .judgeMeal(_spoonKey, paceBpm: pace, mealType: mealType);
+    final model = PersonalizedEatingModel();
+    final profile = model.profileFor(_spoonKey);
+    // Only trust the stored verdict once the profile has been written since
+    // this meal ended; before that it still describes the meal before.
+    final recorded = finishedAt != null &&
+        profile != null &&
+        !profile.updatedAt.isBefore(finishedAt);
+    final j = recorded
+        ? profile.lastJudgement
+        : finishedAt == null
+            ? model.judgeMeal(_spoonKey, paceBpm: pace, mealType: mealType)
+            : null;
     if (j == null) return base;
 
     final obs = j.observedPace.toStringAsFixed(0);
@@ -616,8 +631,7 @@ class AiLabService extends ChangeNotifier implements AiLabActions {
           id: 'personal_pace_slow',
           kind: TipKind.positive,
           title: 'Gentler than your usual',
-          body: '$obs bites/min, against your usual $usual. Slowing down like '
-              'this gives you time to notice you are full.',
+          body: '$obs bites/min, against your usual $usual.',
           priority: 70,
         ),
       PaceVerdict.usual => CoachTip(

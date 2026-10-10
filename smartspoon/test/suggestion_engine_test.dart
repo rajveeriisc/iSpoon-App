@@ -60,6 +60,7 @@ Future<PersonalizedProfile> profileOf(
   String type = 'Lunch',
 }) async {
   final m = PersonalizedEatingModel()..resetForTest();
+  var day = 0;
   for (final p in paces) {
     await m.recordMeal(
       spoonKey: 'k',
@@ -68,6 +69,8 @@ Future<PersonalizedProfile> profileOf(
       durationMinutes: 20 / p,
       tremor: 0.2,
       mealType: type,
+      // One meal a day: same-day meals alone do not unlock personalisation.
+      at: DateTime(2026, 1, 1).add(Duration(days: day++)),
     );
   }
   return m.profileFor('k')!;

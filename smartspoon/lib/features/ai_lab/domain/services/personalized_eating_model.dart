@@ -34,6 +34,7 @@
 import 'dart:convert';
 import 'dart:math' as math;
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -64,6 +65,12 @@ class PersonalizedProfile {
     this.paceVar = 0,
     this.paceUpdates = 0,
     this.outlierStreak = 0,
+    this.distinctDays = 0,
+    this.lastDayKey = '',
+    this.lastJudgedMealUuid,
+    this.lastZ,
+    this.lastBaselinePace,
+    this.lastObservedPace,
     Map<String, MealTypeStats>? byMealType,
     DateTime? updatedAt,
   })  : byMealType = byMealType ?? {},
@@ -85,6 +92,30 @@ class PersonalizedProfile {
   /// Consecutive readings judged to be bad. Reset by any ordinary meal.
   int outlierStreak;
 
+  /// Calendar days (local) on which a meal was learned from, and the last
+  /// such day, which is all that is needed to count them as meals arrive.
+  int distinctDays;
+  String lastDayKey;
+
+  /// How the most recent meal compared with the baseline AS IT STOOD BEFORE
+  /// that meal was folded in, and which meal that was.
+  ///
+  /// Judging a meal after recordMeal has run compares it with a baseline that
+  /// already contains it: the mean has moved toward it and the spread has
+  /// widened because of it. Measured, with a true sd of 2 bites/min:
+  ///
+  ///     meal #7    true z 4.0  ->  reads 1.93   (limit is 2.0: not flagged)
+  ///     meal #10   true z 3.0  ->  reads 2.01
+  ///     meal #20   true z 2.5  ->  reads 2.05
+  ///
+  /// so early on, when the weights are largest, even a meal four standard
+  /// deviations out was reported as "on your usual rhythm". The verdict is
+  /// therefore taken once, before the update, and kept here.
+  String? lastJudgedMealUuid;
+  double? lastZ;
+  double? lastBaselinePace;
+  double? lastObservedPace;
+
   final Map<String, MealTypeStats> byMealType;
   DateTime updatedAt;
 
@@ -101,6 +132,16 @@ class PersonalizedProfile {
   /// Validated by simulation in test/ai_lab/personalized_model_accuracy_test.
   static const int minMealsToPersonalize = 6;
 
+  /// Fewest distinct days the meals must come from.
+  ///
+  /// A meal count alone is satisfied by one afternoon of trying the spoon —
+  /// the eight labelled sessions this model was tuned on were all recorded
+  /// inside twenty minutes — and six back-to-back demonstrations are not a
+  /// record of how someone eats. Three is a product rule, not a measured
+  /// threshold: it is the smallest number that cannot be met in a weekend
+  /// sitting and still unlocks within the first week of real use.
+  static const int minDaysToPersonalize = 3;
+
   /// Deviations needed before the spread is trusted.
   static const int minPaceUpdatesForBand = 4;
 
@@ -109,8 +150,42 @@ class PersonalizedProfile {
   /// True once there is enough history AND enough spread to judge a meal.
   bool get canPersonalize =>
       mealCount >= minMealsToPersonalize &&
+      distinctDays >= minDaysToPersonalize &&
       paceUpdates >= minPaceUpdatesForBand &&
       avgPaceBpm > 0;
+
+  /// The stored pre-update verdict for whichever meal was recorded last.
+  MealJudgement? get lastJudgement => judgementFor(lastJudgedMealUuid) ??
+      (lastJudgedMealUuid == null && lastZ != null
+          ? MealJudgement(
+              verdict: lastZ! > PersonalizedEatingModel.zFlag
+                  ? PaceVerdict.faster
+                  : lastZ! < -PersonalizedEatingModel.zFlag
+                      ? PaceVerdict.slower
+                      : PaceVerdict.usual,
+              z: lastZ!,
+              baselinePace: lastBaselinePace ?? 0,
+              observedPace: lastObservedPace ?? 0,
+            )
+          : null);
+
+  /// The stored pre-update verdict for [mealUuid], or null when the latest
+  /// judged meal is a different one (or predates this field).
+  MealJudgement? judgementFor(String? mealUuid) {
+    final z = lastZ, base = lastBaselinePace, obs = lastObservedPace;
+    if (mealUuid == null || mealUuid != lastJudgedMealUuid) return null;
+    if (z == null || base == null || obs == null) return null;
+    return MealJudgement(
+      verdict: z > PersonalizedEatingModel.zFlag
+          ? PaceVerdict.faster
+          : z < -PersonalizedEatingModel.zFlag
+              ? PaceVerdict.slower
+              : PaceVerdict.usual,
+      z: z,
+      baselinePace: base,
+      observedPace: obs,
+    );
+  }
 
   /// Kept for the existing progress UI.
   bool get isLearned => mealCount >= learnThreshold;
@@ -158,6 +233,12 @@ class PersonalizedProfile {
         'paceVar': paceVar,
         'paceUpdates': paceUpdates,
         'outlierStreak': outlierStreak,
+        'distinctDays': distinctDays,
+        'lastDayKey': lastDayKey,
+        'lastJudgedMealUuid': lastJudgedMealUuid,
+        'lastZ': lastZ,
+        'lastBaselinePace': lastBaselinePace,
+        'lastObservedPace': lastObservedPace,
         'byMealType': {
           for (final e in byMealType.entries) e.key: e.value.toJson(),
         },
@@ -178,6 +259,18 @@ class PersonalizedProfile {
         paceUpdates: (j['paceUpdates'] as num?)?.toInt() ??
             math.max(0, ((j['mealCount'] as num?)?.toInt() ?? 0) - 1),
         outlierStreak: (j['outlierStreak'] as num?)?.toInt() ?? 0,
+        // Profiles saved before days were counted: credit one day per meal up
+        // to the requirement, for the same reason paceUpdates is inferred
+        // above — someone already personalised must not be sent back to
+        // "learning" by an update.
+        distinctDays: (j['distinctDays'] as num?)?.toInt() ??
+            math.min(((j['mealCount'] as num?)?.toInt() ?? 0),
+                minDaysToPersonalize),
+        lastDayKey: j['lastDayKey'] as String? ?? '',
+        lastJudgedMealUuid: j['lastJudgedMealUuid'] as String?,
+        lastZ: (j['lastZ'] as num?)?.toDouble(),
+        lastBaselinePace: (j['lastBaselinePace'] as num?)?.toDouble(),
+        lastObservedPace: (j['lastObservedPace'] as num?)?.toDouble(),
         byMealType: {
           for (final e in ((j['byMealType'] as Map?) ?? const {}).entries)
             e.key as String:
@@ -214,6 +307,23 @@ class PersonalizedEatingModel extends ChangeNotifier {
   PersonalizedEatingModel._internal();
 
   static const String _prefsKey = 'personalized_eating_model_v1';
+
+  /// Who the profiles belong to. Overridable so tests need no Firebase.
+  static String Function() userIdProvider = _signedInUserId;
+
+  static String _signedInUserId() {
+    try {
+      return FirebaseAuth.instance.currentUser?.uid ?? '';
+    } catch (_) {
+      return ''; // Firebase not initialised (tests, very early startup).
+    }
+  }
+
+  /// Profiles used to live under one key for the whole phone, keyed inside
+  /// only by spoon. Two accounts on one phone using the same spoon therefore
+  /// shared a single baseline, and signing in as someone else inherited the
+  /// previous person's "usual pace". Each account now has its own key.
+  static String _keyFor(String uid) => uid.isEmpty ? _prefsKey : '$_prefsKey:$uid';
 
   /// EWMA weight. 0.2 ≈ "the last ~5 meals dominate", so the model tracks the
   /// person as their habits change instead of freezing on old data.
@@ -331,7 +441,18 @@ class PersonalizedEatingModel extends ChangeNotifier {
     if (_loaded) return;
     try {
       final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_prefsKey);
+      final uid = userIdProvider();
+      var raw = prefs.getString(_keyFor(uid));
+      if (raw == null && uid.isNotEmpty) {
+        // First load for this account since profiles became per-user: the
+        // shared copy is theirs if anyone's, so adopt it — and REMOVE it, or
+        // the next account to sign in on this phone would adopt it too.
+        raw = prefs.getString(_prefsKey);
+        if (raw != null) {
+          await prefs.setString(_keyFor(uid), raw);
+          await prefs.remove(_prefsKey);
+        }
+      }
       if (raw != null && raw.isNotEmpty) {
         final map = jsonDecode(raw) as Map<String, dynamic>;
         for (final entry in map.entries) {
@@ -344,6 +465,13 @@ class PersonalizedEatingModel extends ChangeNotifier {
     }
     _loaded = true;
     notifyListeners();
+  }
+
+  /// Drop the previous account's profiles and load the current one's.
+  Future<void> reloadForUser() async {
+    _profiles.clear();
+    _loaded = false;
+    await load();
   }
 
   PersonalizedProfile? profileFor(String spoonKey) =>
@@ -374,6 +502,8 @@ class PersonalizedEatingModel extends ChangeNotifier {
     required double durationMinutes,
     required double tremor,
     String? mealType,
+    String? mealUuid,
+    DateTime? at,
   }) async {
     if (spoonKey.isEmpty) return;
     if (!isPlausibleMeal(
@@ -388,6 +518,21 @@ class PersonalizedEatingModel extends ChangeNotifier {
       spoonKey,
       () => PersonalizedProfile(spoonKey: spoonKey),
     );
+
+    // Verdict first, against the baseline as it stands. Everything below
+    // moves that baseline toward this meal; see lastZ for what that cost.
+    final verdict = judgeMeal(spoonKey, paceBpm: paceBpm, mealType: mealType);
+    p.lastJudgedMealUuid = mealUuid;
+    p.lastZ = verdict?.z;
+    p.lastBaselinePace = verdict?.baselinePace;
+    p.lastObservedPace = verdict?.observedPace;
+
+    final when = at ?? DateTime.now();
+    final dayKey = '${when.year}-${when.month}-${when.day}';
+    if (dayKey != p.lastDayKey) {
+      p.distinctDays += 1;
+      p.lastDayKey = dayKey;
+    }
 
     if (p.mealCount == 0) {
       p.avgBitesPerMeal = bites.toDouble();
@@ -502,6 +647,13 @@ class PersonalizedEatingModel extends ChangeNotifier {
         return 'Learning your eating style — $left more meal${left == 1 ? '' : 's'} '
             'until your insights are personalized to you.';
       }
+      final daysLeft =
+          PersonalizedProfile.minDaysToPersonalize - p.distinctDays;
+      if (daysLeft > 0) {
+        return 'Learning your eating style — meals on $daysLeft more '
+            'day${daysLeft == 1 ? '' : 's'} and your insights will be '
+            'personalized to you.';
+      }
       return 'Learning your eating style — a couple more meals and your '
           'insights will be personalized to you.';
     }
@@ -525,8 +677,7 @@ class PersonalizedEatingModel extends ChangeNotifier {
         return 'You ate faster than your usual pace today — try setting the '
             'spoon down between bites.';
       case PaceVerdict.slower:
-        return 'Nicely paced — slower than your usual today, which is great '
-            'for digestion.';
+        return 'Slower than your usual pace today.';
       case PaceVerdict.usual:
         return 'Right on your usual eating rhythm today.';
     }
@@ -536,7 +687,7 @@ class PersonalizedEatingModel extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       final map = {for (final e in _profiles.entries) e.key: e.value.toJson()};
-      await prefs.setString(_prefsKey, jsonEncode(map));
+      await prefs.setString(_keyFor(userIdProvider()), jsonEncode(map));
     } catch (e) {
       debugPrint('[PEM] persist error: $e');
     }
