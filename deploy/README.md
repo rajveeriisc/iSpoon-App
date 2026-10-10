@@ -13,6 +13,7 @@ Host: `srv2047744.hstgr.cloud` (Hostinger VPS, Mumbai, Ubuntu 26.04, 1 vCPU / 3.
 | `ispoon-deploy{.service,.timer}` | `/etc/systemd/system/` |
 | `ispoon-deploy` | `/usr/local/bin/` (mode 755) |
 | `fail2ban-jail.local` | `/etc/fail2ban/jail.local` |
+| `sshd-00-ispoon-hardening.conf` | `/etc/ssh/sshd_config.d/00-ispoon-hardening.conf` |
 
 ## What is deliberate here
 
@@ -57,12 +58,19 @@ the upstream connection each time, defeating `keepalive 32`.
 `text/html` only, so API responses went out uncompressed. Measured on a 29 KB
 payload: 29,062 -> 8,156 bytes.
 
-## Known gaps
+**The sshd hardening file must sort before `50-cloud-init.conf`.** Hostinger's
+image ships that drop-in with `PasswordAuthentication yes`, and sshd honours
+the *first* occurrence of a keyword — so it beat both the main `sshd_config`
+(which already said `no`) and `60-cloudimg-settings.conf`. Editing
+`/etc/ssh/sshd_config` changes nothing at all. cloud-init still rewrites its
+own file on every boot and still loses to the `00-` prefix. Verify with
+`sshd -T | grep passwordauthentication`, never by reading a file.
 
-- Password SSH is still enabled and root login is permitted. fail2ban covers
-  brute force (5 strikes, 1 h ban) but key-only auth is the real fix.
-- `fail2ban-jail.local` whitelists the admin network in `ignoreip`. From any
-  other network, five failed passwords means an hour's wait.
+## Known gaps
+- `fail2ban-jail.local` whitelists the admin network in `ignoreip`. With
+  password auth now off this matters less, but a key-auth flood from another
+  network could still trip it.
+- Root logs in directly (by key). A separate sudo user would be better.
 - The database is in Singapore while the server is in Mumbai: ~59 ms per
   query, and Neon suspends its compute when idle, so the first request after a
   long gap can take 0.5-1.2 s. Co-locating the two is the only real fix.
