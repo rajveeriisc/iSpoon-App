@@ -1,0 +1,12 @@
+[Unit]
+Description=Check GitHub for iSpoon backend changes
+
+[Timer]
+# Polling rather than a webhook: no inbound endpoint to secure, no secret to
+# leak, and nothing to re-point if the host or IP changes.
+OnBootSec=2min
+OnUnitActiveSec=2min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

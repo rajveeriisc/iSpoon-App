@@ -1,0 +1,7 @@
+[Unit]
+Description=Pull iSpoon backend from GitHub and redeploy if it changed
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/ispoon-deploy

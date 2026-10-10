@@ -1,0 +1,13 @@
+[DEFAULT]
+# Do not lock out the network this box is administered from.
+ignoreip = 127.0.0.1/8 ::1 14.139.128.34
+backend = systemd
+bantime  = 1h
+findtime = 10m
+maxretry = 5
+
+[sshd]
+enabled = true
+# 205 failed attempts from one IP in two days, with password auth still the
+# only way in. Five strikes then an hour in the wall.
+mode = aggressive

@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# Pull main from GitHub and restart the API only if the backend actually
+# changed, rolling back if the new commit cannot serve traffic.
+#
+# Most commits to this repo touch the Flutter app or the firmware, not
+# ispoon-backend. Restarting the API for those would drop live connections
+# for no reason, so the backend path is what decides whether to act.
+set -euo pipefail
+
+REPO=/opt/ispoon/app
+BACKEND="$REPO/ispoon-backend"
+SVC=ispoon-backend
+HEALTH=http://127.0.0.1:5000/api/health/ready
+
+log() { echo "[deploy] $*"; }
+
+# EVERY git command runs as the user that owns the checkout.
+#
+# Running some as root was the original bug: git refuses to operate on a
+# repository owned by another user ("dubious ownership") unless that path is
+# in safe.directory, and root's ~/.gitconfig is unreachable under systemd
+# because systemd does not set HOME. It worked when run by hand from a login
+# shell and failed every time from the timer. Owning user throughout means
+# there is no ownership mismatch to excuse and no dependency on HOME.
+git_app() { sudo -u ispoon -H git -C "$REPO" "$@"; }
+
+git_app fetch --quiet origin main
+
+OLD=$(git_app rev-parse HEAD)
+NEW=$(git_app rev-parse origin/main)
+
+if [ "$OLD" = "$NEW" ]; then
+  log "already at ${NEW:0:7}, nothing to do"
+  exit 0
+fi
+
+# Did anything under ispoon-backend/ change? Anything else is the app or the
+# firmware and needs no API restart.
+if git_app diff --quiet "$OLD" "$NEW" -- ispoon-backend/; then
+  log "${OLD:0:7} -> ${NEW:0:7} touches no backend file; fast-forwarding without restart"
+  git_app merge --ff-only --quiet origin/main
+  exit 0
+fi
+
+log "${OLD:0:7} -> ${NEW:0:7} changes the backend; deploying"
+git_app merge --ff-only --quiet origin/main
+
+# Reinstall only when the lockfile moved. npm ci wipes and rebuilds
+# node_modules, which is slow and needlessly risky on a code-only change.
+LOCK_CHANGED=0
+if ! git_app diff --quiet "$OLD" "$NEW" -- ispoon-backend/package-lock.json; then
+  LOCK_CHANGED=1
+  log "lockfile changed; npm ci"
+  (cd "$BACKEND" && sudo -u ispoon -H npm ci --omit=dev --no-audit --fund=false >/dev/null)
+fi
+
+systemctl restart "$SVC"
+
+# Readiness, not liveness: it checks the database too, so a commit that boots
+# but cannot reach Neon is still caught.
+for _ in $(seq 1 20); do
+  if curl -fsS --max-time 3 "$HEALTH" >/dev/null 2>&1; then
+    log "healthy at ${NEW:0:7}"
+    exit 0
+  fi
+  sleep 2
+done
+
+log "FAILED health check at ${NEW:0:7}; rolling back to ${OLD:0:7}"
+git_app reset --hard --quiet "$OLD"
+if [ "$LOCK_CHANGED" = "1" ]; then
+  (cd "$BACKEND" && sudo -u ispoon -H npm ci --omit=dev --no-audit --fund=false >/dev/null)
+fi
+systemctl restart "$SVC"
+log "rolled back"
+exit 1

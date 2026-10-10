@@ -1,0 +1,37 @@
+[Unit]
+Description=iSpoon backend API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ispoon
+Group=ispoon
+WorkingDirectory=/opt/ispoon/app/ispoon-backend
+# --env-file, not systemd EnvironmentFile: FIREBASE_PRIVATE_KEY is a quoted
+# value containing literal \n escapes, and systemd would apply its own
+# C-escape processing to it inside double quotes and corrupt the key.
+ExecStart=/usr/bin/node --env-file=/etc/ispoon/production.env src/server.js
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+# Hardening. The API needs the network, its own code read-only, and exactly
+# one writable path for uploads.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ReadWritePaths=/var/lib/ispoon
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+MemoryMax=1G
+
+[Install]
+WantedBy=multi-user.target
