@@ -4,7 +4,7 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
-import 'bowl_spoon_icon.dart';
+import 'package:smartspoon/core/widgets/bowl_spoon_icon.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:smartspoon/features/ai_lab/domain/engine/handedness.dart';

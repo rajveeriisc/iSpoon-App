@@ -28,6 +28,7 @@
 // silently lost its heater controls. Both entry points now share this single
 // resolution path so they can't diverge again.
 import 'package:flutter/material.dart';
+import 'package:smartspoon/core/widgets/bowl_spoon_icon.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:smartspoon/core/theme/app_theme.dart';
 import 'package:smartspoon/ble/models/runtime_models.dart';
@@ -85,14 +86,14 @@ Future<bool?> askHeaterCapability(BuildContext context, String deviceName) {
           const SizedBox(height: 24),
           SpoonTypeOption(
             label: 'i-Spoon Pro — with heater',
-            icon: Icons.local_fire_department_rounded,
+            icon: const Icon(Icons.local_fire_department_rounded),
             iconColor: AppTheme.paprika,
             onTap: () => Navigator.pop(ctx, true),
           ),
           const SizedBox(height: 12),
           SpoonTypeOption(
             label: 'i-Spoon Basic — no heater',
-            icon: Icons.restaurant_rounded,
+            icon: const BowlSpoonIcon(),
             iconColor: AppTheme.caramel,
             onTap: () => Navigator.pop(ctx, false),
           ),
@@ -112,7 +113,7 @@ class SpoonTypeOption extends StatelessWidget {
   });
 
   final String label;
-  final IconData icon;
+  final Widget icon;
   final Color iconColor;
   final VoidCallback onTap;
 
@@ -129,7 +130,10 @@ class SpoonTypeOption extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(icon, color: iconColor, size: 22),
+            IconTheme(
+              data: IconThemeData(color: iconColor, size: 22),
+              child: icon,
+            ),
             const SizedBox(width: 16),
             Expanded(
               child: Text(

@@ -4,6 +4,7 @@
 // (title + subtitle) at the top of the login/signup/forgot-password forms,
 // keeping their headings visually consistent.
 import 'package:flutter/material.dart';
+import 'package:smartspoon/core/widgets/bowl_spoon_icon.dart';
 import 'package:smartspoon/core/theme/app_theme.dart';
 
 class AuthFormHeader extends StatelessWidget {
@@ -40,8 +41,7 @@ class AuthFormHeader extends StatelessWidget {
               ),
             ],
           ),
-          child: Icon(
-            Icons.restaurant_rounded,
+          child: BowlSpoonIcon(
             color: colorScheme.onPrimaryContainer,
             size: 30,
           ),

@@ -5,6 +5,7 @@
 // InsightsController and live values from UnifiedDataService. Reached from the
 // Eating Analysis card and the Insights dashboard.
 import 'package:flutter/material.dart';
+import 'package:smartspoon/core/widgets/bowl_spoon_icon.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:smartspoon/features/insights/application/insights_controller.dart';
@@ -392,7 +393,7 @@ class _MealsAnalysisPageState extends State<MealsAnalysisPage> {
               child: _SummaryItem(
                 label: 'Total Bites',
                 value: '$totalBites',
-                icon: Icons.restaurant,
+                icon: const BowlSpoonIcon(),
                 color: AppTheme.caramel,
                 scale: scale,
               ),
@@ -403,7 +404,7 @@ class _MealsAnalysisPageState extends State<MealsAnalysisPage> {
                 label: 'Avg Speed',
                 value: avgSpeed.toStringAsFixed(1),
                 unit: 'bpm',
-                icon: Icons.speed,
+                icon: const Icon(Icons.speed),
                 color: AppTheme.honey,
                 scale: scale,
               ),
@@ -418,7 +419,7 @@ class _MealsAnalysisPageState extends State<MealsAnalysisPage> {
                 label: 'Duration',
                 value: '$totalDuration',
                 unit: 'min',
-                icon: Icons.timer,
+                icon: const Icon(Icons.timer),
                 color: AppTheme.sageDeep,
                 scale: scale,
               ),
@@ -429,7 +430,7 @@ class _MealsAnalysisPageState extends State<MealsAnalysisPage> {
                 label: 'Avg Temp',
                 value: avgTemp != null ? formatSpoonTempC(avgTemp) : '--',
                 unit: avgTemp != null ? '°C' : null,
-                icon: Icons.thermostat_outlined,
+                icon: const Icon(Icons.thermostat_outlined),
                 color: AppTheme.paprika,
                 scale: scale,
               ),
@@ -566,7 +567,7 @@ class _SummaryItem extends StatelessWidget {
   final String label;
   final String value;
   final String? unit;
-  final IconData icon;
+  final Widget icon;
   final Color color;
   final double scale;
 
@@ -592,7 +593,11 @@ class _SummaryItem extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(icon, color: color, size: (20 * scale).clamp(16, 28)),
+                IconTheme(
+                  data: IconThemeData(
+                      color: color, size: (20 * scale).clamp(16, 28)),
+                  child: icon,
+                ),
                 SizedBox(width: 8 * scale),
                 Expanded(
                   child: Text(
@@ -658,16 +663,16 @@ class _MealCard extends StatelessWidget {
 
   const _MealCard({required this.meal, required this.scale, this.onTap});
 
-  IconData _icon(String type) {
+  Widget _icon(String type) {
     switch (type.toLowerCase()) {
       case 'breakfast':
-        return Icons.wb_twilight;
+        return const Icon(Icons.wb_twilight);
       case 'lunch':
-        return Icons.wb_sunny;
+        return const Icon(Icons.wb_sunny);
       case 'dinner':
-        return Icons.nights_stay_outlined;
+        return const Icon(Icons.nights_stay_outlined);
       default:
-        return Icons.local_dining;
+        return const BowlSpoonIcon();
     }
   }
 
@@ -699,10 +704,12 @@ class _MealCard extends StatelessWidget {
               color: AppTheme.caramel.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(10 * scale),
             ),
-            child: Icon(
-              _icon(type),
-              color: AppTheme.caramel,
-              size: (20 * scale).clamp(16, 28),
+            child: IconTheme(
+              data: IconThemeData(
+                color: AppTheme.caramel,
+                size: (20 * scale).clamp(16, 28),
+              ),
+              child: _icon(type),
             ),
           ),
           SizedBox(width: 12 * scale),

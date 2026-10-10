@@ -1,5 +1,6 @@
 // profile_page.dart — focused account, goals, preferences, and support.
 import 'package:flutter/material.dart';
+import 'package:smartspoon/core/widgets/bowl_spoon_icon.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:smartspoon/core/providers/theme_provider.dart';
@@ -96,7 +97,7 @@ class ProfilePage extends StatelessWidget {
                           child: _ProfileMetric(
                             label: 'Bites',
                             value: '${data.totalBites}',
-                            icon: Icons.restaurant_menu_rounded,
+                            icon: const BowlSpoonIcon(),
                           ),
                         ),
                         _MetricDivider(color: colors.outlineVariant),
@@ -104,7 +105,7 @@ class ProfilePage extends StatelessWidget {
                           child: _ProfileMetric(
                             label: 'Target',
                             value: '${data.dailyBiteGoal}',
-                            icon: Icons.track_changes_rounded,
+                            icon: const Icon(Icons.track_changes_rounded),
                             onTap: () => _openGoals(context),
                           ),
                         ),
@@ -113,7 +114,7 @@ class ProfilePage extends StatelessWidget {
                           child: _ProfileMetric(
                             label: 'Streak',
                             value: '${data.currentStreak}',
-                            icon: Icons.calendar_today_rounded,
+                            icon: const Icon(Icons.calendar_today_rounded),
                           ),
                         ),
                       ],
@@ -352,7 +353,7 @@ class _ProfileMetric extends StatelessWidget {
 
   final String label;
   final String value;
-  final IconData icon;
+  final Widget icon;
   final VoidCallback? onTap;
 
   @override
@@ -364,7 +365,11 @@ class _ProfileMetric extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: AppTheme.spaceSm),
         child: Column(
           children: [
-            Icon(icon, size: 20, color: Theme.of(context).colorScheme.primary),
+            IconTheme(
+              data: IconThemeData(
+                  size: 20, color: Theme.of(context).colorScheme.primary),
+              child: icon,
+            ),
             const SizedBox(height: AppTheme.spaceSm),
             Text(
               value,

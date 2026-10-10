@@ -6,6 +6,7 @@
 // cards. Each is a self-contained, per-deviceId widget the home_page composes
 // into the feed.
 import 'package:flutter/material.dart';
+import 'package:smartspoon/core/widgets/bowl_spoon_icon.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -817,28 +818,28 @@ class EatingAnalysisCard extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
                     _MealBiteChip(
-                      icon: Icons.wb_twilight,
+                      icon: const Icon(Icons.wb_twilight),
                       label: 'Breakfast',
                       bites: dataService.breakfastTotalBitesFor(devId),
                       isActive:
                           dataService.currentMealTypeFor(devId) == 'Breakfast',
                     ),
                     _MealBiteChip(
-                      icon: Icons.wb_sunny,
+                      icon: const Icon(Icons.wb_sunny),
                       label: 'Lunch',
                       bites: dataService.lunchTotalBitesFor(devId),
                       isActive:
                           dataService.currentMealTypeFor(devId) == 'Lunch',
                     ),
                     _MealBiteChip(
-                      icon: Icons.nights_stay_outlined,
+                      icon: const Icon(Icons.nights_stay_outlined),
                       label: 'Dinner',
                       bites: dataService.dinnerTotalBitesFor(devId),
                       isActive:
                           dataService.currentMealTypeFor(devId) == 'Dinner',
                     ),
                     _MealBiteChip(
-                      icon: Icons.local_dining,
+                      icon: const BowlSpoonIcon(),
                       label: 'Snack',
                       bites: dataService.snackTotalBitesFor(devId),
                       isActive:
@@ -895,7 +896,7 @@ class _AnalysisItem extends StatelessWidget {
 
 /// Per-meal bite chip for the Eating Analysis card
 class _MealBiteChip extends StatelessWidget {
-  final IconData icon;
+  final Widget icon;
   final String label;
   final int bites;
   final bool isActive;
@@ -924,14 +925,18 @@ class _MealBiteChip extends StatelessWidget {
                 ? Border.all(color: AppTheme.emerald, width: 1.5.w)
                 : null,
           ),
-          child: Icon(
-            icon,
-            size: 16.sp,
-            color: isActive
-                ? AppTheme.emerald
-                : Theme.of(
-                    context,
-                  ).colorScheme.onSurface.withValues(alpha: 0.5),
+          // IconTheme rather than Icon(): the snack glyph is a painted
+          // BowlSpoonIcon, and both it and Icon take size/colour from here.
+          child: IconTheme(
+            data: IconThemeData(
+              size: 16.sp,
+              color: isActive
+                  ? AppTheme.emerald
+                  : Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withValues(alpha: 0.5),
+            ),
+            child: icon,
           ),
         ),
         SizedBox(height: 6.h),
@@ -1158,16 +1163,17 @@ class _TodayMealsTableState extends State<TodayMealsTable> {
     return '$h:$m';
   }
 
-  IconData _getMealIcon(String type) {
+  Widget _getMealIcon(String type) {
     switch (type.toLowerCase()) {
       case 'breakfast':
-        return Icons.wb_twilight;
+        return const Icon(Icons.wb_twilight);
       case 'lunch':
-        return Icons.wb_sunny;
+        return const Icon(Icons.wb_sunny);
       case 'dinner':
-        return Icons.nights_stay_outlined;
+        return const Icon(Icons.nights_stay_outlined);
       default:
-        return Icons.local_dining;
+        // Snacks have no time-of-day glyph, so they get the meal itself.
+        return const BowlSpoonIcon();
     }
   }
 
@@ -1256,10 +1262,12 @@ class _TodayMealsTableState extends State<TodayMealsTable> {
                               color: AppTheme.emerald.withValues(alpha: 0.15),
                               shape: BoxShape.circle,
                             ),
-                            child: Icon(
-                              _getMealIcon(type),
-                              color: AppTheme.emerald,
-                              size: 20.sp,
+                            child: IconTheme(
+                              data: IconThemeData(
+                                color: AppTheme.emerald,
+                                size: 20.sp,
+                              ),
+                              child: _getMealIcon(type),
                             ),
                           ),
                           SizedBox(width: 12.w),

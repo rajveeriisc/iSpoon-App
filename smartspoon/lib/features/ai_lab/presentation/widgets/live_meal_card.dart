@@ -1,7 +1,7 @@
 // live_meal_card.dart — the top card: what is happening right now.
 import 'package:flutter/material.dart';
 
-import 'bowl_spoon_icon.dart';
+import 'package:smartspoon/core/widgets/bowl_spoon_icon.dart';
 import 'package:smartspoon/features/ai_lab/domain/engine/meal_tracker.dart';
 import 'package:smartspoon/features/ai_lab/domain/insights/eating_insights.dart';
 import 'package:smartspoon/features/ai_lab/domain/services/ai_lab_view_data.dart';

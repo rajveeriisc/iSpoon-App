@@ -14,19 +14,21 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 class BowlSpoonIcon extends StatelessWidget {
-  const BowlSpoonIcon({super.key, this.size = 24, this.color});
+  const BowlSpoonIcon({super.key, this.size, this.color});
 
-  final double size;
-
-  /// Defaults to IconTheme, so it behaves like an Icon inside buttons and
-  /// list tiles without each caller restating the colour.
+  /// Both default to IconTheme, so this can be dropped anywhere an Icon goes —
+  /// including inside a widget that sizes and colours its glyph by wrapping it
+  /// in an IconTheme — without the caller restating either.
+  final double? size;
   final Color? color;
 
   @override
   Widget build(BuildContext context) {
-    final resolved = color ?? IconTheme.of(context).color ?? Colors.black;
+    final theme = IconTheme.of(context);
+    final resolved = color ?? theme.color ?? Colors.black;
+    final dim = size ?? theme.size ?? 24.0;
     return SizedBox.square(
-      dimension: size,
+      dimension: dim,
       child: CustomPaint(
         // CustomPaint contributes no semantics of its own, which is right
         // here: every caller pairs this with a visible text label

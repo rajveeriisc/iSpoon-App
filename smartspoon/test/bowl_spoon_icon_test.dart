@@ -5,7 +5,7 @@
 // rather than passing a colour.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:smartspoon/features/ai_lab/presentation/widgets/bowl_spoon_icon.dart';
+import 'package:smartspoon/core/widgets/bowl_spoon_icon.dart';
 
 void main() {
   testWidgets('paints without error and honours its size', (tester) async {

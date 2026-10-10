@@ -4,6 +4,7 @@
 // and external help resources (opened via url_launcher). Reached from the
 // profile menu.
 import 'package:flutter/material.dart';
+import 'package:smartspoon/core/widgets/bowl_spoon_icon.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:smartspoon/core/theme/app_theme.dart';
@@ -53,7 +54,7 @@ class HelpCenterPage extends StatelessWidget {
                       const SizedBox(height: 10),
                       _buildHelpOption(
                         context,
-                        icon: Icons.question_answer_outlined,
+                        icon: const Icon(Icons.question_answer_outlined),
                         title: 'FAQ',
                         subtitle: 'Common questions & answers',
                         onTap: () {
@@ -66,7 +67,7 @@ class HelpCenterPage extends StatelessWidget {
                       const SizedBox(height: 16),
                       _buildHelpOption(
                         context,
-                        icon: Icons.email_outlined,
+                        icon: const Icon(Icons.email_outlined),
                         title: 'Email Support',
                         subtitle: 'Get a response within 24 hours',
                         onTap: () async {
@@ -87,7 +88,7 @@ class HelpCenterPage extends StatelessWidget {
                       const SizedBox(height: 16),
                       _buildHelpOption(
                         context,
-                        icon: Icons.book_outlined,
+                        icon: const Icon(Icons.book_outlined),
                         title: 'User Guide',
                         subtitle: 'Learn how to use i-Spoon',
                         onTap: () => _showUserGuide(context),
@@ -117,13 +118,13 @@ class HelpCenterPage extends StatelessWidget {
         final subColor = isDark ? AppTheme.darkTextSecondary : AppTheme.textSecondary;
 
         final steps = [
-          ('1. Connect your Spoon', Icons.bluetooth, 'Tap the + button on the home screen, turn on Bluetooth, and select your i-Spoon device from the list.'),
-          ('2. Start a Meal', Icons.restaurant, 'Once connected, tap "Start Meal" on the home screen. The app will begin tracking your bites automatically.'),
-          ('3. Track Bites', Icons.track_changes, 'Every bite is detected by the IMU sensor. Your live bite count and eating speed appear in real time.'),
-          ('4. Monitor Temperature', Icons.thermostat, 'The spoon\'s temperature sensor shows food temperature in °C. An alert fires if food is too hot (>60°C).'),
-          ('5. View Insights', Icons.bar_chart, 'After your meal, go to the Insights tab to see bite history, tremor analysis, and daily summaries.'),
-          ('6. Set Daily Goals', Icons.flag, 'Go to Profile → Daily Target to set per-meal bite goals. Your progress is shown on the Profile page.'),
-          ('7. Sync Data', Icons.cloud_upload, 'Data syncs automatically every 5 minutes when online. You can also pull-to-refresh on any screen.'),
+          ('1. Connect your Spoon', const Icon(Icons.bluetooth), 'Tap the + button on the home screen, turn on Bluetooth, and select your i-Spoon device from the list.'),
+          ('2. Start a Meal', const BowlSpoonIcon(), 'Once connected, tap "Start Meal" on the home screen. The app will begin tracking your bites automatically.'),
+          ('3. Track Bites', const Icon(Icons.track_changes), 'Every bite is detected by the IMU sensor. Your live bite count and eating speed appear in real time.'),
+          ('4. Monitor Temperature', const Icon(Icons.thermostat), 'The spoon\'s temperature sensor shows food temperature in °C. An alert fires if food is too hot (>60°C).'),
+          ('5. View Insights', const Icon(Icons.bar_chart), 'After your meal, go to the Insights tab to see bite history, tremor analysis, and daily summaries.'),
+          ('6. Set Daily Goals', const Icon(Icons.flag), 'Go to Profile → Daily Target to set per-meal bite goals. Your progress is shown on the Profile page.'),
+          ('7. Sync Data', const Icon(Icons.cloud_upload), 'Data syncs automatically every 5 minutes when online. You can also pull-to-refresh on any screen.'),
         ];
 
         return DraggableScrollableSheet(
@@ -184,7 +185,11 @@ class HelpCenterPage extends StatelessWidget {
                                 color: AppTheme.caramel.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(10),
                               ),
-                              child: Icon(icon, color: AppTheme.caramel, size: 20),
+                              child: IconTheme(
+                                data: const IconThemeData(
+                                    color: AppTheme.caramel, size: 20),
+                                child: icon,
+                              ),
                             ),
                             const SizedBox(width: 14),
                             Expanded(
@@ -251,7 +256,7 @@ class HelpCenterPage extends StatelessWidget {
 
   Widget _buildHelpOption(
     BuildContext context, {
-    required IconData icon,
+    required Widget icon,
     required String title,
     required String subtitle,
     required VoidCallback onTap,
@@ -274,7 +279,11 @@ class HelpCenterPage extends StatelessWidget {
                     color: AppTheme.caramel.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(icon, color: AppTheme.caramel, size: 24),
+                  child: IconTheme(
+                    data: const IconThemeData(
+                        color: AppTheme.caramel, size: 24),
+                    child: icon,
+                  ),
                 ),
                  const SizedBox(width: 16),
                 Expanded(

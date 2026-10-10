@@ -5,6 +5,7 @@
 // entry points into the bite-history, tremor-history, and meals-analysis pages.
 // Purely presentational — all data and blending happen in the controller.
 import 'package:flutter/material.dart';
+import 'package:smartspoon/core/widgets/bowl_spoon_icon.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -13,6 +14,7 @@ import 'package:smartspoon/features/insights/domain/services/insight_generator.d
 import 'package:smartspoon/core/widgets/premium_widgets.dart';
 import 'package:smartspoon/core/widgets/premium_header.dart';
 import 'package:smartspoon/core/theme/app_theme.dart';
+import 'package:smartspoon/core/widgets/card_layout.dart';
 
 class InsightsDashboard extends StatefulWidget {
   const InsightsDashboard({super.key});
@@ -84,12 +86,13 @@ class _InsightsDashboardState extends State<InsightsDashboard> {
                     backgroundColor: colorScheme.surface,
                     child: SingleChildScrollView(
                       physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.fromLTRB(20, 10, 20, 100),
+                      padding: CardLayout.listPadding(context,
+                          top: AppTheme.spaceSm),
                       child: Column(
                         children: [
                           CombinedMetricCard(
                             metric1: MetricData(
-                              icon: Icons.restaurant_menu_rounded,
+                              icon: const BowlSpoonIcon(),
                               title: 'Total Bites',
                               value: '${unifiedData.selectedTotalBites}',
                               color: AppTheme.emerald,
@@ -109,7 +112,7 @@ class _InsightsDashboardState extends State<InsightsDashboard> {
                               },
                             ),
                             metric2: MetricData(
-                              icon: Icons.speed_rounded,
+                              icon: const Icon(Icons.speed_rounded),
                               title: 'Eating Pace',
                               value:
                                   '${(unifiedData.selectedAvgBiteTime).toStringAsFixed(1)}s',
@@ -196,10 +199,10 @@ class _InsightsDashboardState extends State<InsightsDashboard> {
       ),
       child: Row(
         children: [
-          _buildTab('Eating', Icons.restaurant, 'eating', AppTheme.primary),
+          _buildTab('Eating', const BowlSpoonIcon(), 'eating', AppTheme.primary),
           _buildTab(
             'Movement',
-            Icons.show_chart,
+            const Icon(Icons.show_chart),
             'tremor',
             colorScheme.primary,
           ),
@@ -208,7 +211,7 @@ class _InsightsDashboardState extends State<InsightsDashboard> {
     );
   }
 
-  Widget _buildTab(String label, IconData icon, String key, Color accent) {
+  Widget _buildTab(String label, Widget icon, String key, Color accent) {
     final isActive = _activeTab == key;
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -235,11 +238,8 @@ class _InsightsDashboardState extends State<InsightsDashboard> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(
-                    icon,
-                    size: 18,
-                    color: isActive ? accent : inactiveColor,
-                  ),
+                  IconTheme(data: IconThemeData(size: 18,
+                    color: isActive ? accent : inactiveColor), child: icon),
                   const SizedBox(width: 8),
                   Text(
                     label,

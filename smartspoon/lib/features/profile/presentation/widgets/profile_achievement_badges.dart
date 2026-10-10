@@ -4,6 +4,7 @@
 // Applies Appllama design laws: one accent color (primary cyan), shape lock
 // (circular badges, 10dp icon boxes), 4pt spacing grid, and no emoji in chrome.
 import 'package:flutter/material.dart';
+import 'package:smartspoon/core/widgets/bowl_spoon_icon.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:smartspoon/core/theme/app_theme.dart';
@@ -12,7 +13,7 @@ import 'package:smartspoon/features/insights/domain/services/unified_data_servic
 // ─── Data model ─────────────────────────────────────────────────────────────
 
 class _Badge {
-  final IconData icon;
+  final Widget icon;
   final String title;
   final String subtitle;
   final Color color;
@@ -29,35 +30,35 @@ class _Badge {
 
 const _badges = [
   _Badge(
-    icon: Icons.local_dining_rounded,
+    icon: const BowlSpoonIcon(),
     title: 'First Meal',
     subtitle: 'Logged your first meal',
     color: AppTheme.primary,
     isUnlocked: _hasAnyBites,
   ),
   _Badge(
-    icon: Icons.local_fire_department_rounded,
+    icon: const Icon(Icons.local_fire_department_rounded),
     title: '7-Day Streak',
     subtitle: 'Active 7 days in a row',
     color: Color(0xFFE88A1A),
     isUnlocked: _streak7,
   ),
   _Badge(
-    icon: Icons.track_changes_rounded,
+    icon: const Icon(Icons.track_changes_rounded),
     title: 'Goal Crusher',
     subtitle: 'Hit 100% daily target',
     color: AppTheme.accentGreen,
     isUnlocked: _hitGoal,
   ),
   _Badge(
-    icon: Icons.star_rounded,
+    icon: const Icon(Icons.star_rounded),
     title: 'Mindful Eater',
     subtitle: '30-day streak',
     color: Color(0xFF7B5CF0),
     isUnlocked: _streak30,
   ),
   _Badge(
-    icon: Icons.emoji_events_rounded,
+    icon: const Icon(Icons.emoji_events_rounded),
     title: 'Champion',
     subtitle: 'All goals complete',
     color: Color(0xFFC97824),
@@ -188,7 +189,10 @@ class _BadgeTileState extends State<_BadgeTile>
                       : null,
                 ),
                 child: widget.unlocked
-                    ? Icon(widget.badge.icon, color: color, size: 28)
+                    ? IconTheme(
+                        data: IconThemeData(color: color, size: 28),
+                        child: widget.badge.icon,
+                      )
                     : Icon(
                         Icons.lock_outline_rounded,
                         color: widget.isDark

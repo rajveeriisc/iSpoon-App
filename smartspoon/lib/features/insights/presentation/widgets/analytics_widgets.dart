@@ -75,7 +75,12 @@ class _MetricItem extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Icon(data.icon, size: 24, color: data.color),
+              // IconTheme, not Icon(): the glyph may be a painted
+              // BowlSpoonIcon, and both it and Icon read size/colour here.
+              IconTheme(
+                data: IconThemeData(size: 24, color: data.color),
+                child: data.icon,
+              ),
               if (data.trend != null) _buildTrendBadge(data.trend!),
             ],
           ),
@@ -182,7 +187,7 @@ class _MetricItem extends StatelessWidget {
 
 /// Data models
 class MetricData {
-  final IconData icon;
+  final Widget icon;
   final String title;
   final String value;
   final MetricTrend? trend;

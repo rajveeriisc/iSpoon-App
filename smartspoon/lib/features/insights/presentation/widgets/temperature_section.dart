@@ -5,6 +5,7 @@
 // on the Insights dashboard. The hasHeater flag toggles heater-specific UI.
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:smartspoon/core/widgets/bowl_spoon_icon.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:smartspoon/core/theme/app_theme.dart';
 import '../../domain/models.dart';
@@ -117,7 +118,7 @@ class _TemperatureSectionState extends State<TemperatureSection>
                 maxValue: 100,
                 color: AppTheme.sageDeep,
                 animation: _controller,
-                icon: Icons.restaurant_rounded,
+                icon: const BowlSpoonIcon(),
               ),
               if (widget.hasHeater)
                 _AnimatedCircularTempGauge(
@@ -126,7 +127,7 @@ class _TemperatureSectionState extends State<TemperatureSection>
                   maxValue: 100,
                   color: AppTheme.paprika,
                   animation: _controller,
-                  icon: Icons.local_fire_department_rounded,
+                  icon: const Icon(Icons.local_fire_department_rounded),
                 ),
             ],
           ),
@@ -197,7 +198,7 @@ class _AnimatedCircularTempGauge extends StatelessWidget {
   final double maxValue;
   final Color color;
   final Animation<double> animation;
-  final IconData icon;
+  final Widget icon;
 
   @override
   Widget build(BuildContext context) {
@@ -230,7 +231,10 @@ class _AnimatedCircularTempGauge extends StatelessWidget {
                           color: color.withValues(alpha: 0.15),
                           shape: BoxShape.circle,
                         ),
-                        child: Icon(icon, color: color, size: 24),
+                        child: IconTheme(
+                          data: IconThemeData(color: color, size: 24),
+                          child: icon,
+                        ),
                       ),
                       const SizedBox(height: 8),
                       Text(

@@ -6,6 +6,7 @@
 // data is actually flowing and for firmware/protocol troubleshooting.
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
+import 'package:smartspoon/core/widgets/bowl_spoon_icon.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -488,7 +489,7 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
           children: [
             Expanded(
               child: _buildMetricCard(
-                icon: Icons.battery_charging_full,
+                icon: const Icon(Icons.battery_charging_full),
                 iconColor: _getBatteryColor(service.batteryLevel),
                 label: 'Battery',
                 value: '${service.batteryLevel}%',
@@ -499,7 +500,7 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
             const SizedBox(width: 12),
             Expanded(
               child: _buildMetricCard(
-                icon: Icons.thermostat,
+                icon: const Icon(Icons.thermostat),
                 iconColor: _getTempColor(service.temperature),
                 label: 'Temperature',
                 value: formatSpoonTempWithUnit(service.temperature),
@@ -514,7 +515,7 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
           children: [
             Expanded(
               child: _buildMetricCard(
-                icon: Icons.access_time,
+                icon: const Icon(Icons.access_time),
                 iconColor: AppTheme.emerald,
                 label: 'Last Packet',
                 value: service.lastPacketTime != null
@@ -529,7 +530,7 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
             const SizedBox(width: 12),
             Expanded(
               child: _buildMetricCard(
-                icon: Icons.restaurant,
+                icon: const BowlSpoonIcon(),
                 iconColor: AppTheme.honey,
                 label: 'Bites (MCU)',
                 value: '${service.hardwareBiteCount}',
@@ -548,7 +549,7 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
   }
 
   Widget _buildMetricCard({
-    required IconData icon,
+    required Widget icon,
     required Color iconColor,
     required String label,
     required String value,
@@ -573,7 +574,10 @@ class _BleSettingsScreenState extends State<BleSettingsScreen> {
       ),
       child: Column(
         children: [
-          Icon(icon, color: iconColor, size: 36),
+          IconTheme(
+            data: IconThemeData(color: iconColor, size: 36),
+            child: icon,
+          ),
           const SizedBox(height: 8),
           Text(
             label,

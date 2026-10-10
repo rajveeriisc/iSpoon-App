@@ -4,6 +4,7 @@
 // with optional tap callbacks to drill into detail pages. Presentational only —
 // values are passed in by the dashboard.
 import 'package:flutter/material.dart';
+import 'package:smartspoon/core/widgets/bowl_spoon_icon.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:smartspoon/core/theme/app_theme.dart';
 
@@ -52,7 +53,7 @@ class SummaryCards extends StatelessWidget {
               child: _SummaryCard(
                 title: 'Total Bites',
                 value: totalBites.toString(),
-                icon: Icons.restaurant_menu_rounded,
+                icon: const BowlSpoonIcon(),
                 color: AppTheme.primary,
                 onTap: onTotalBitesTap,
               ),
@@ -63,7 +64,7 @@ class SummaryCards extends StatelessWidget {
                 title: 'Eating Pace',
                 value: paceBpm.toStringAsFixed(1),
                 unit: 'bites/min',
-                icon: Icons.speed_rounded,
+                icon: const Icon(Icons.speed_rounded),
                 color: AppTheme.primary,
                 onTap: onPaceTap,
               ),
@@ -88,7 +89,7 @@ class _SummaryCard extends StatelessWidget {
   final String title;
   final String value;
   final String? unit;
-  final IconData icon;
+  final Widget icon;
   final Color color;
   final VoidCallback? onTap;
 
@@ -133,7 +134,13 @@ class _SummaryCard extends StatelessWidget {
                     color: color.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(icon, color: color, size: 20), // Reduced from 22
+                  // IconTheme rather than Icon(): the glyph may be a
+                  // painted BowlSpoonIcon, and both it and Icon take their
+                  // size and colour from here.
+                  child: IconTheme(
+                    data: IconThemeData(color: color, size: 20),
+                    child: icon,
+                  ),
                 ),
                 if (onTap != null)
                   Icon(

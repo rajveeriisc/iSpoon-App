@@ -27,7 +27,17 @@ const _banned = <String, String>{
   'Icons.psychology': 'as above',
   'Icons.auto_awesome': 'sparkles, the "magic AI" glyph',
   'Icons.emoji_objects': 'another bulb',
+  // Cutlery: a knife and fork is wrong for a spoon product, and one of the
+  // places it appeared labels the moment the spoon is IN the food. All 17
+  // sites now use the painted BowlSpoonIcon instead.
+  'Icons.restaurant': 'knife and fork',
+  'Icons.local_dining': 'knife and fork',
+  'Icons.dinner_dining': 'a fork in pasta',
+  'Icons.lunch_dining': 'a sandwich',
 };
+
+/// The painted glyph's own file names the icons it replaced, in prose.
+const _iconSourceFile = 'lib/core/widgets/bowl_spoon_icon.dart';
 
 /// Heart glyphs are banned as decoration but legitimate as a data icon, so
 /// these are checked against an explicit allowlist of places that may use one.
@@ -54,6 +64,7 @@ void main() {
   test('no decorative bulb, sparkle or brain glyph anywhere in lib/', () {
     final offences = <String>[];
     for (final file in _dartFiles()) {
+      if (file.path == _iconSourceFile) continue;
       final lines = file.readAsLinesSync();
       for (var i = 0; i < lines.length; i++) {
         final line = lines[i];

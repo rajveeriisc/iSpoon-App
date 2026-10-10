@@ -4,6 +4,7 @@
 // UnifiedDataService) and lets them view/adjust progress. A goal-tracking view
 // reached from the profile area.
 import 'package:flutter/material.dart';
+import 'package:smartspoon/core/widgets/bowl_spoon_icon.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:smartspoon/features/profile/presentation/widgets/profile_redesign_widgets.dart'; // Provides ProfileCard (PremiumGlassCard wrapper)
@@ -187,28 +188,28 @@ class _DailyBitesScreenState extends State<DailyBitesScreen> {
                           'Breakfast',
                           _breakfastBites,
                           (val) => setState(() => _breakfastBites = val),
-                          Icons.wb_sunny_outlined,
+                          const Icon(Icons.wb_sunny_outlined),
                         ),
                         const SizedBox(height: 16),
                         _buildMealSlider(
                           'Lunch',
                           _lunchBites,
                           (val) => setState(() => _lunchBites = val),
-                          Icons.restaurant_outlined,
+                          const BowlSpoonIcon(),
                         ),
                         const SizedBox(height: 16),
                         _buildMealSlider(
                           'Dinner',
                           _dinnerBites,
                           (val) => setState(() => _dinnerBites = val),
-                          Icons.nights_stay_outlined,
+                          const Icon(Icons.nights_stay_outlined),
                         ),
                         const SizedBox(height: 16),
                         _buildMealSlider(
                           'Snacks',
                           _snackBites,
                           (val) => setState(() => _snackBites = val),
-                          Icons.cookie_outlined,
+                          const Icon(Icons.cookie_outlined),
                         ),
                       ],
                     ),
@@ -264,7 +265,7 @@ class _DailyBitesScreenState extends State<DailyBitesScreen> {
     String label,
     double value,
     ValueChanged<double> onChanged,
-    IconData icon,
+    Widget icon,
   ) {
     return ProfileCard(
       accentColor: AppTheme.caramel,
@@ -279,7 +280,11 @@ class _DailyBitesScreenState extends State<DailyBitesScreen> {
                   color: AppTheme.caramel.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(icon, color: AppTheme.caramel, size: 20),
+                child: IconTheme(
+                  data: const IconThemeData(
+                      color: AppTheme.caramel, size: 20),
+                  child: icon,
+                ),
               ),
               const SizedBox(width: 16),
               Expanded(

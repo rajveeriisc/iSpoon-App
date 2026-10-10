@@ -7,6 +7,7 @@
 // plus health-insight and bite-detection sections. Also requests first-launch
 // permissions and triggers a one-time cloud restore on login.
 import 'package:flutter/material.dart';
+import 'package:smartspoon/core/widgets/bowl_spoon_icon.dart';
 import 'package:smartspoon/features/profile/index.dart';
 import 'package:smartspoon/features/insights/index.dart';
 import 'package:smartspoon/features/home/presentation/widgets/home_cards.dart'
@@ -174,18 +175,18 @@ class _HomePageState extends State<HomePage> {
       ),
       child: Row(
         children: [
-          _buildNavItem(0, Icons.grid_view_rounded, 'Home'),
-          _buildNavItem(1, Icons.insights_rounded, 'Insights'),
+          _buildNavItem(0, Icon(Icons.grid_view_rounded), 'Home'),
+          _buildNavItem(1, Icon(Icons.insights_rounded), 'Insights'),
           // 'AI Lab' named the technology; 'Mealsense' names what the page is
           // about. Icon moved off the brain for the same reason.
-          _buildNavItem(2, Icons.restaurant_rounded, 'Mealsense'),
-          _buildNavItem(3, Icons.person_rounded, 'Profile'),
+          _buildNavItem(2, const BowlSpoonIcon(), 'Mealsense'),
+          _buildNavItem(3, Icon(Icons.person_rounded), 'Profile'),
         ],
       ),
     );
   }
 
-  Widget _buildNavItem(int index, IconData icon, String label) {
+  Widget _buildNavItem(int index, Widget icon, String label) {
     final isSelected = _selectedIndex == index;
     // colorScheme.primary adapts per theme (teal in light, mint in dark) so
     // the active state stays legible on the dark glass bar.
@@ -216,11 +217,8 @@ class _HomePageState extends State<HomePage> {
                         : Colors.transparent,
                     borderRadius: BorderRadius.circular(AppTheme.radiusSm),
                   ),
-                  child: Icon(
-                    icon,
-                    color: isSelected ? selectedColor : unselectedColor,
-                    size: 22,
-                  ),
+                  child: IconTheme(data: IconThemeData(color: isSelected ? selectedColor : unselectedColor,
+                    size: 22), child: icon),
                 ),
                 // Persistent labels aid discoverability; only the color and
                 // weight react to selection so the layout never shifts.
