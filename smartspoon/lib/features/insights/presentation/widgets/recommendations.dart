@@ -13,6 +13,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:smartspoon/core/theme/app_theme.dart';
+import 'package:smartspoon/core/widgets/card_layout.dart';
 
 import '../../domain/suggestion_engine.dart';
 
@@ -28,7 +29,6 @@ class Recommendations extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     // No suggestions is a real answer, not a layout to fill. An empty card
@@ -37,7 +37,7 @@ class Recommendations extends StatelessWidget {
 
     return Container(
       margin: margin ??
-          EdgeInsets.symmetric(horizontal: size.width * 0.05),
+          EdgeInsets.symmetric(horizontal: CardLayout.gutterOf(context)),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: isDark ? AppTheme.darkSurfaceCard : AppTheme.surface,

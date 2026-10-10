@@ -1,5 +1,7 @@
 // ai_lab_view.dart — the AI Lab page body, built only from AiLabViewData.
 import 'package:flutter/material.dart';
+import 'package:smartspoon/core/theme/app_theme.dart';
+import 'package:smartspoon/core/widgets/card_layout.dart';
 import 'package:smartspoon/features/ai_lab/domain/services/ai_lab_view_data.dart';
 import 'package:smartspoon/features/ai_lab/presentation/widgets/ai_lab_card.dart';
 import 'package:smartspoon/features/ai_lab/presentation/widgets/bite_timeline.dart';
@@ -22,37 +24,37 @@ class AiLabView extends StatelessWidget {
     final recent = data.profile?.recent ?? const [];
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(18, 20, 18, 110),
+      padding: CardLayout.listPadding(context, top: AppTheme.spaceLg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _Header(data: data),
-          const SizedBox(height: 18),
+          const SizedBox(height: CardLayout.sectionGap),
           LiveMealCard(data: data, onFinish: actions.finishMeal),
           if (start != null && data.bites.isNotEmpty) ...[
-            const SizedBox(height: 14),
+            const SizedBox(height: CardLayout.cardGap),
             BiteTimeline(
               bites: data.bites,
               start: start,
               end: data.mealEnd ?? data.now,
             ),
           ],
-          const SizedBox(height: 14),
+          const SizedBox(height: CardLayout.cardGap),
           CoachCard(tips: data.tips, inMeal: data.inMeal),
-          const SizedBox(height: 14),
+          const SizedBox(height: CardLayout.cardGap),
           SteadinessCard(
             metrics: data.metrics,
             reference: data.model?.steadiness,
             live: data.inMeal,
             rhythmicNow: data.rhythmicNow,
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: CardLayout.cardGap),
           EatingPatternCard(profile: data.profile, current: data.metrics),
           if (recent.isNotEmpty) ...[
-            const SizedBox(height: 14),
+            const SizedBox(height: CardLayout.cardGap),
             RecentMealsCard(meals: recent, now: data.now),
           ],
-          const SizedBox(height: 14),
+          const SizedBox(height: CardLayout.cardGap),
           ModelDataSection(data: data, actions: actions),
         ],
       ),

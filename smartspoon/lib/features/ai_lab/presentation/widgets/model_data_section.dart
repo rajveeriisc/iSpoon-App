@@ -3,6 +3,8 @@
 // "under the hood" part of the page.
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+
+import 'bowl_spoon_icon.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:smartspoon/features/ai_lab/domain/engine/handedness.dart';
@@ -195,7 +197,7 @@ class _Recorder extends StatelessWidget {
               HapticFeedback.mediumImpact();
               actions.markBite();
             },
-            icon: const Icon(Icons.restaurant_rounded),
+            icon: const BowlSpoonIcon(size: 24),
             label: const Text('Bite', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
           ),
         ),

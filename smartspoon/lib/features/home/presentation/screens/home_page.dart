@@ -13,6 +13,7 @@ import 'package:smartspoon/features/home/presentation/widgets/home_cards.dart'
     as home_widgets;
 import 'package:smartspoon/features/ai_lab/presentation/screens/ai_lab_page.dart';
 import 'package:smartspoon/core/theme/app_theme.dart';
+import 'package:smartspoon/core/widgets/card_layout.dart';
 import 'package:smartspoon/core/widgets/geometric_background.dart';
 import 'package:smartspoon/core/widgets/premium_header.dart';
 import 'package:smartspoon/core/services/permission_service.dart';
@@ -140,16 +141,15 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildBottomNav(BuildContext context) {
-    // Keep the floating bar clear of the gesture bar / home indicator on
-    // tall devices while preserving the 30px look on devices without insets.
-    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+    // Height and margin both come from CardLayout, which is also what the
+    // scrolling lists use to work out how far to stop short of this bar.
     return Container(
       margin: EdgeInsets.only(
         left: AppTheme.spaceMd,
         right: AppTheme.spaceMd,
-        bottom: bottomInset > 22 ? bottomInset + 8 : AppTheme.spaceMd,
+        bottom: CardLayout.navBarMargin(context),
       ),
-      height: 64,
+      height: kBottomNavHeight,
       decoration: BoxDecoration(
         color: Theme.of(context).brightness == Brightness.dark
             ? AppTheme.darkSurface
@@ -258,7 +258,7 @@ class HomeContent extends StatelessWidget {
         final deviceIds = ble.visibleDeviceIds;
         final unpaired = ble.unpairedNearbyDevices;
         return SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 10, 20, 100),
+          padding: CardLayout.listPadding(context, top: AppTheme.spaceSm),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

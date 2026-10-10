@@ -1,5 +1,7 @@
 // live_meal_card.dart — the top card: what is happening right now.
 import 'package:flutter/material.dart';
+
+import 'bowl_spoon_icon.dart';
 import 'package:smartspoon/features/ai_lab/domain/engine/meal_tracker.dart';
 import 'package:smartspoon/features/ai_lab/domain/insights/eating_insights.dart';
 import 'package:smartspoon/features/ai_lab/domain/services/ai_lab_view_data.dart';
@@ -209,44 +211,51 @@ class _PhaseChip extends StatelessWidget {
     if (!calibrated) {
       return _chip(
         context,
-        Icons.tune_rounded,
+        (c) => Icon(Icons.tune_rounded, size: 15, color: c),
         'Getting to know how you hold the spoon',
         theme.colorScheme.primary,
         muted: true,
       );
     }
 
-    final (icon, label, color) = switch (phase) {
+    final (Widget Function(Color) leading, String label, Color color) =
+        switch (phase) {
+      // A bowl with a spoon in it, not a knife and fork: this is the moment
+      // the spoon is in the food, and the product is a spoon.
       BitePhase.load => (
-          Icons.restaurant_rounded,
+          (c) => BowlSpoonIcon(size: 15, color: c),
           'Collecting food',
           theme.colorScheme.primary,
         ),
       BitePhase.lift => (
-          Icons.arrow_upward_rounded,
+          (c) => Icon(Icons.arrow_upward_rounded, size: 15, color: c),
           'Lifting to your mouth',
           theme.colorScheme.primary,
         ),
       BitePhase.mouth => (
-          Icons.check_circle_rounded,
+          (c) => Icon(Icons.check_circle_rounded, size: 15, color: c),
           'At your mouth',
           kSteadyGreen,
         ),
       BitePhase.returning => (
-          Icons.arrow_downward_rounded,
+          (c) => Icon(Icons.arrow_downward_rounded, size: 15, color: c),
           'Going back down',
           theme.colorScheme.primary,
         ),
       BitePhase.idle => (
-          Icons.pause_circle_outline_rounded,
+          (c) => Icon(Icons.pause_circle_outline_rounded, size: 15, color: c),
           'Spoon at rest',
           Colors.grey,
         ),
     };
-    return _chip(context, icon, label, color);
+    return _chip(context, leading, label, color);
   }
 
-  Widget _chip(BuildContext context, IconData icon, String label, Color color,
+  /// [leading] is a builder rather than an IconData because the "collecting
+  /// food" phase is painted (BowlSpoonIcon), not taken from the icon font —
+  /// and the colour it needs is only resolved here, after [muted] applies.
+  Widget _chip(BuildContext context, Widget Function(Color) leading,
+      String label, Color color,
       {bool muted = false}) {
     final c = muted ? mutedText(context) : color;
     return Container(
@@ -257,7 +266,7 @@ class _PhaseChip extends StatelessWidget {
         border: Border.all(color: c.withValues(alpha: 0.28)),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, size: 15, color: c),
+        leading(c),
         const SizedBox(width: 7),
         Flexible(
           child: Text(
