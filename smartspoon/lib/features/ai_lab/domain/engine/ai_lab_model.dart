@@ -51,6 +51,34 @@ class BiteWeights {
 /// wide margin on both sides. Override per model with "minMotionRmsDps".
 const double kDefaultMinMotionRmsDps = 1.0;
 
+/// Where voluntary eating motion ends and tremor/shake begins, in Hz.
+///
+/// Swept against 861 windows of real eating from 8 labelled sessions, holding
+/// the false-alarm rate at 1% (threshold = that eater's p99) and scoring
+/// synthetic tremor and shaking:
+///
+///     low cut    3 Hz shake   5 Hz shake   5 Hz 10 dps tremor
+///       2.0 Hz        95%          97%           100%
+///       2.5 Hz        84%         100%           100%
+///       3.0 Hz        55%         100%           100%
+///       4.0 Hz         0%          95%            92%
+///
+/// 2.0 Hz is the only cut that catches a deliberate 3 Hz shake, which is what
+/// a person does when they test the feature by hand.
+const double kDefaultShakeLoHz = 2.0;
+
+/// Upper edge. Above this is sensor noise, not hand motion.
+const double kDefaultShakeHiHz = 15.0;
+
+/// Default shake-index threshold: the 99th percentile of real eating, so one
+/// window in a hundred of ordinary eating trips it.
+///
+/// Measured on one eater's 8 sessions. It should become per-person the way
+/// pace already is — a brisker or shakier eater has a different baseline —
+/// and more datasets from other people would be the thing that justifies a
+/// different global default.
+const double kDefaultShakeIndexThreshold = 0.849;
+
 class SteadinessReference {
   const SteadinessReference({
     required this.fftSize,
@@ -59,6 +87,9 @@ class SteadinessReference {
     required this.bandHiHz,
     required this.rhythmicShareThreshold,
     this.minMotionRmsDps = kDefaultMinMotionRmsDps,
+    this.shakeLoHz = kDefaultShakeLoHz,
+    this.shakeHiHz = kDefaultShakeHiHz,
+    this.shakeIndexThreshold = kDefaultShakeIndexThreshold,
     required this.normalSteadyPctMin,
     required this.normalSteadyPctMedian,
     required this.syntheticDetection,
@@ -76,6 +107,13 @@ class SteadinessReference {
       // documented default rather than a hard failure.
       minMotionRmsDps: (j['minMotionRmsDps'] as num?)?.toDouble() ??
           kDefaultMinMotionRmsDps,
+      // Optional for the same reason as minMotionRmsDps: a model file written
+      // before the shake index existed gets the documented defaults rather
+      // than failing to parse.
+      shakeLoHz: (j['shakeLoHz'] as num?)?.toDouble() ?? kDefaultShakeLoHz,
+      shakeHiHz: (j['shakeHiHz'] as num?)?.toDouble() ?? kDefaultShakeHiHz,
+      shakeIndexThreshold: (j['shakeIndexThreshold'] as num?)?.toDouble() ??
+          kDefaultShakeIndexThreshold,
       normalSteadyPctMin: (j['normalSteadyPctMin'] as num).toDouble(),
       normalSteadyPctMedian: (j['normalSteadyPctMedian'] as num).toDouble(),
       syntheticDetection: {
@@ -93,6 +131,12 @@ class SteadinessReference {
   /// A window is rhythmic when the strongest line holds more than this share
   /// of the 4–12 Hz gyro power.
   final double rhythmicShareThreshold;
+
+  /// Band used by SteadinessResult.shakeIndex, and the level above which a
+  /// window counts as shaky.
+  final double shakeLoHz;
+  final double shakeHiHz;
+  final double shakeIndexThreshold;
 
   /// Least broadband gyro RMS (deg/s) for a window to count as evidence about
   /// a hand. Below this the spoon is not being held, so the window is neither

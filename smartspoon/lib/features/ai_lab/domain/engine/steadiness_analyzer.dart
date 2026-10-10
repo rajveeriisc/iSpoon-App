@@ -28,6 +28,8 @@ class SteadinessResult {
     required this.share,
     required this.hz,
     required this.rhythmic,
+    required this.shakeIndex,
+    required this.shaky,
     required this.motionRmsDps,
     required this.active,
   });
@@ -41,6 +43,33 @@ class SteadinessResult {
   /// Frequency of that line.
   final double hz;
   final bool rhythmic;
+
+  /// Share of this hand's motion that sits ABOVE the band voluntary eating
+  /// occupies, as an amplitude ratio in 0..1:
+  ///
+  ///     shakeIndex = RMS(gyro, 2-15 Hz) / RMS(gyro, 0.3-15 Hz)
+  ///
+  /// [share] cannot see this. It is a ratio INSIDE 4-12 Hz, so it asks only
+  /// whether that band's energy is concentrated at one frequency and has no
+  /// amplitude term at all — measured on the shipped analyser, a hand thrown
+  /// around at 195 deg/s scored 100% steady. This asks a different question:
+  /// how much of the motion is faster than the task needs. Scooping and
+  /// lifting are slow, so smooth eating stays low however vigorous, while
+  /// tremor and deliberate shaking push it up.
+  ///
+  /// Measured over 861 windows of real eating (8 labelled sessions):
+  ///     p50 0.36   p95 0.63   p99 0.85
+  /// and on synthetic motion:
+  ///     tremor  5 Hz 10 dps   1.00     shake 3 Hz 100 dps  0.90
+  ///     tremor  6 Hz 20 dps   0.99     waving 1 Hz 200 dps 0.24
+  final double shakeIndex;
+
+  /// True when [shakeIndex] is above what this eater's own meals produce.
+  ///
+  /// Kept separate from [rhythmic] because the two catch different things: a
+  /// narrowband line (pathological tremor) versus broadband fast motion
+  /// (a shaking or unsteady hand). A window is unsteady if either fires.
+  final bool shaky;
 
   /// Broadband RMS of the mean-removed gyro vector over the window, deg/s.
   ///
@@ -68,6 +97,16 @@ class SteadinessAnalyzer {
       : _fft = FFT(ref.fftSize),
         _kLo = (ref.bandLoHz * ref.fftSize / sampleRateHz).ceil(),
         _kHi = (ref.bandHiHz * ref.fftSize / sampleRateHz).floor(),
+        // Shake bands. 2.0 Hz is where voluntary eating motion ends and
+        // tremor begins: swept against the real sessions, a 2.0 Hz cut caught
+        // 95% of a 3 Hz shake and 100% of a 5 Hz 10 deg/s tremor at a 1%
+        // false-alarm rate, while 3.0 Hz caught only 55% of the shake and
+        // 4.0 Hz missed it entirely.
+        _kShakeLo = (ref.shakeLoHz * ref.fftSize / sampleRateHz).ceil(),
+        _kShakeHi = (ref.shakeHiHz * ref.fftSize / sampleRateHz).floor(),
+        // 0.3 Hz rather than DC: the mean is already removed, and the lowest
+        // bins hold drift rather than motion.
+        _kFloorLo = (0.3 * ref.fftSize / sampleRateHz).ceil(),
         _hann = Float64List.fromList([
           for (var k = 0; k < ref.fftSize; k++)
             0.5 * (1.0 - math.cos(2.0 * math.pi * k / (ref.fftSize - 1))),
@@ -81,6 +120,9 @@ class SteadinessAnalyzer {
   final FFT _fft;
   final int _kLo;
   final int _kHi;
+  final int _kShakeLo;
+  final int _kShakeHi;
+  final int _kFloorLo;
   final Float64List _hann;
   final Float64List _x, _y, _z;
   int _count = 0;
@@ -135,11 +177,24 @@ class SteadinessAnalyzer {
     }
     final share = total > 0 ? line / total : 0.0;
     final motionRmsDps = math.sqrt(sumSq / size);
+
+    // Reuses `power`, which is already the Hann-tapered spectrum summed over
+    // the three axes, so the shake index costs a pass over the bins rather
+    // than another FFT.
+    var fast = 0.0, all = 0.0;
+    for (var k = _kFloorLo; k <= _kShakeHi; k++) {
+      all += power[k];
+      if (k >= _kShakeLo) fast += power[k];
+    }
+    final shakeIndex = all > 0 ? math.sqrt(fast / all) : 0.0;
+
     return SteadinessResult(
       n: n,
       share: share,
       hz: (_kLo + best) * sampleRateHz / size,
       rhythmic: share > ref.rhythmicShareThreshold,
+      shakeIndex: shakeIndex,
+      shaky: shakeIndex > ref.shakeIndexThreshold,
       motionRmsDps: motionRmsDps,
       active: motionRmsDps >= ref.minMotionRmsDps,
     );

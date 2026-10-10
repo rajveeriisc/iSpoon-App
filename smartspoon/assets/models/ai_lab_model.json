@@ -157,6 +157,17 @@
     "syntheticDetection": {
       "5Hz_10dps": 0.324,
       "5Hz_20dps": 0.793
+    },
+    "shakeLoHz": 2.0,
+    "shakeHiHz": 15.0,
+    "shakeIndexThreshold": 0.849,
+    "shakeDetection": {
+      "3Hz_100dps": 0.95,
+      "5Hz_120dps": 0.97,
+      "6Hz_20dps": 0.97,
+      "5Hz_10dps": 1.0,
+      "waving_1Hz_200dps": 0.0,
+      "falseAlarmRate": 0.01
     }
   },
   "biteCycle": {
