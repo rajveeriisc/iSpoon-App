@@ -179,17 +179,26 @@ class ModelEvaluation {
 ///
 /// Thresholds for BiteMotionGate, under "motionGate" in the model JSON.
 ///
-/// The two limits are the ~99.5th percentile of 359 real bites (two spoons,
-/// eighteen sessions): quietest 200 ms 18.9 deg/s, mean rotation over the
-/// lookback 111.2 deg/s. [maxQuietDps] sits a little above its percentile
-/// because the cost of a miss there is a lost real bite, and the mean test
-/// already rejects everything the quiet test lets through.
+/// Both limits come from real bites only — 359 from eighteen ordinary
+/// sessions on two spoons, plus 38 from two sessions eaten with a pronounced
+/// tremor — and sit just above the largest value any of them produced:
+///
+///                           ordinary   with tremor   limit
+///     quietest 200 ms        20.2        25.8         32 deg/s
+///     mean over lookback    108.8        52.9        110 deg/s
+///
+/// The tremor sessions are why [maxQuietDps] is 32 and not 25. A hand with a
+/// tremor does not come to rest in the mouth the way a steady one does, and
+/// at 25 the gate refused a real bite from exactly the people this spoon is
+/// for. Raising it cost nothing measurable: the same 4 of 25 non-eating
+/// detections pass the stillness test at 26 and at 32, and all four fail the
+/// mean test. A tremor markedly stronger than the recorded one is untested.
 class MotionGateConfig {
   const MotionGateConfig({
     this.enforce = true,
     this.lookbackSamples = 500,
     this.quietSamples = 20,
-    this.maxQuietDps = 25.0,
+    this.maxQuietDps = 32.0,
     this.maxMeanDps = 110.0,
   });
 

@@ -7,10 +7,11 @@
 //
 // Two things about the surrounding seconds do, and both are physical:
 //
-//   stillness  A bite ends with the spoon held in the mouth. Across 359 real
-//              bites from two spoons the quietest 200 ms near each one was
-//              under 19 deg/s for 99.5% of them. Arbitrary movement has no
-//              such stop: its quietest 200 ms had a median of 55-58 deg/s.
+//   stillness  A bite ends with the spoon held in the mouth. Across 359
+//              ordinary bites the quietest 200 ms near each one never
+//              exceeded 20 deg/s, and across 38 bites eaten with a pronounced
+//              tremor never 26. Arbitrary movement has no such stop: its
+//              quietest 200 ms had a median of 61 deg/s.
 //
 //   agitation  Eating is intermittent — scoop, lift, hold, lower, pause — so
 //              the mean rotation rate over the bite's few seconds stayed

@@ -21,6 +21,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:smartspoon/features/ai_lab/domain/engine/ai_lab_model.dart';
 import 'package:smartspoon/features/ai_lab/domain/engine/bite_motion_gate.dart';
 import 'package:smartspoon/features/ai_lab/domain/engine/eating_engine.dart';
+import 'package:smartspoon/features/ai_lab/domain/engine/steadiness_analyzer.dart';
+import 'package:smartspoon/features/ai_lab/domain/insights/eating_insights.dart';
 
 import 'ai_lab_fixtures.dart';
 
@@ -132,6 +134,48 @@ void main() {
       expect(worst, lessThanOrEqualTo(1),
           reason: 'no single meal may lose more than one bite to the gate');
       expect(on, greaterThanOrEqualTo((off * 0.99).floor()));
+    });
+  });
+
+  group('eating with a tremor is still eating', () {
+    // Two sessions of 20 marked bites each, eaten with a pronounced tremor.
+    // A hand with a tremor does not come to rest in the mouth the way a
+    // steady one does, so a stillness limit tuned on steady eaters refuses
+    // real bites from exactly the people this spoon is for: at 25 deg/s the
+    // gate threw one away (quietest 200 ms: 26 deg/s).
+    for (final f in ['tremor_eating_1.csv.gz', 'tremor_eating_2.csv.gz']) {
+      test(f, () {
+        final rows = _gz(f);
+        final before = _count(_model(gate: false), rows);
+        final after = _count(_model(gate: true), rows);
+        // ignore: avoid_print
+        print('  $f  20 marked bites: ${before.bites} counted without the '
+            'gate, ${after.bites} with it');
+        expect(after.bites, before.bites,
+            reason: 'the gate refused a real bite taken with a tremor');
+        expect(after.refused, 0);
+        expect(after.bites, inInclusiveRange(18, 21));
+      });
+    }
+
+    test('and the tremor shows up in the steadiness reading', () {
+      // The other half of the same recordings: an ordinary meal reads
+      // 90-100% steady, so these must read clearly below that.
+      for (final f in ['tremor_eating_1.csv.gz', 'tremor_eating_2.csv.gz']) {
+        final m = loadModel();
+        final a = SteadinessAnalyzer(m.steadiness);
+        var active = 0, unsteady = 0;
+        for (final p in _gz(f)) {
+          final w = a.add(p[4], p[5], p[6]);
+          if (w == null || !w.active) continue;
+          active++;
+          if (w.rhythmic || w.shaky) unsteady++;
+        }
+        final pct = steadyPctOf(active, unsteady)!;
+        // ignore: avoid_print
+        print('  $f  steady ${pct.toStringAsFixed(0)}%');
+        expect(pct, lessThan(80.0), reason: 'a real tremor read as steady');
+      }
     });
   });
 
