@@ -14,6 +14,40 @@ const double kPauseGapSec = 60.0;
 const double kShakyBelowPct = 75.0;
 const double kSteadyFromPct = 90.0;
 
+/// Share of a meal spent in tremor-like shaking at which it is worth naming,
+/// and at which it is marked. Percent of active windows.
+///
+/// Set from labelled recordings, run through the shipped engine: eighteen
+/// ordinary sessions and two eaten with a pronounced tremor.
+///
+///                      tremor-like shaking    steady
+///     ordinary (18)        0 - 5 %           89 - 100 %
+///     with tremor (2)     21 %, 45 %         55 %, 73 %
+///
+/// Fourteen of the eighteen ordinary meals read exactly 0 and the highest
+/// read 5, so 8 keeps every one of them out of "some". 15 sits below the
+/// milder tremor session and above the midpoint of the gap. Two tremor
+/// sessions from one person place that upper cut loosely; it is where the
+/// data puts it, not a clinical boundary.
+const double kTremorSomeFromPct = 8.0;
+const double kTremorMarkedFromPct = 15.0;
+
+enum TremorLevel { none, some, marked }
+
+TremorLevel tremorLevelOf(double tremorPct) => tremorPct >= kTremorMarkedFromPct
+    ? TremorLevel.marked
+    : tremorPct >= kTremorSomeFromPct
+        ? TremorLevel.some
+        : TremorLevel.none;
+
+/// Share of [activeWindows] that were unsteady with a tremor-band rhythm, or
+/// null under the same minimum steadyPctOf uses — a percentage of four
+/// windows is not a reading.
+double? tremorPctOf(int activeWindows, int tremorWindows) =>
+    activeWindows < kMinSteadyWindows
+        ? null
+        : 100.0 * tremorWindows.clamp(0, activeWindows) / activeWindows;
+
 /// Fewer windows than this is not a reading: one or two of them swing between
 /// 0 % and 100 % and would make every screen flicker.
 const int kMinSteadyWindows = 5;
@@ -53,6 +87,8 @@ class MealMetrics {
     this.pauses = 0,
     this.steadyPct,
     this.rhythmHz,
+    this.tremorPct,
+    this.tremorHz,
   });
 
   /// [windows] is the count of ACTIVE steadiness windows (those that carried
@@ -65,6 +101,8 @@ class MealMetrics {
     int windows = 0,
     int rhythmicWindows = 0,
     double? rhythmHz,
+    int tremorWindows = 0,
+    double? tremorHz,
   }) {
     final gaps = <double>[
       for (var i = 1; i < biteTimes.length; i++)
@@ -104,6 +142,8 @@ class MealMetrics {
       pauses: gaps.where((g) => g >= kPauseGapSec).length,
       steadyPct: steadyPctOf(windows, rhythmicWindows),
       rhythmHz: rhythmHz,
+      tremorPct: tremorPctOf(windows, tremorWindows),
+      tremorHz: tremorHz,
     );
   }
 
@@ -125,6 +165,11 @@ class MealMetrics {
   final int pauses;
   final double? steadyPct;
   final double? rhythmHz;
+
+  /// Share of the meal in tremor-like shaking, and its mean rhythm. A
+  /// narrower claim than [steadyPct]: unsteady AND at a tremor frequency.
+  final double? tremorPct;
+  final double? tremorHz;
 }
 
 /// What the person's own history says is normal for them.

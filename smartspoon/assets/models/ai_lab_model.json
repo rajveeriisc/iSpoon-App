@@ -152,8 +152,8 @@
     ],
     "rhythmicShareThreshold": 0.5848606709113274,
     "normalPercentile": 97.5,
-    "normalSteadyPctMin": 91.5,
-    "normalSteadyPctMedian": 99.1,
+    "normalSteadyPctMin": 89.0,
+    "normalSteadyPctMedian": 100.0,
     "syntheticDetection": {
       "5Hz_10dps": 0.324,
       "5Hz_20dps": 0.793
@@ -168,6 +168,31 @@
       "5Hz_10dps": 1.0,
       "waving_1Hz_200dps": 0.0,
       "falseAlarmRate": 0.01
+    },
+    "tremorMaxHz": 8.0,
+    "tremorReference": {
+      "ordinarySessions": 18,
+      "ordinaryTremorPct": [
+        0,
+        5
+      ],
+      "ordinarySteadyPct": [
+        89,
+        100
+      ],
+      "tremorSessions": 2,
+      "tremorPct": [
+        21,
+        45
+      ],
+      "tremorSteadyPct": [
+        55,
+        73
+      ],
+      "tremorHz": [
+        5.7,
+        6.2
+      ]
     }
   },
   "biteCycle": {

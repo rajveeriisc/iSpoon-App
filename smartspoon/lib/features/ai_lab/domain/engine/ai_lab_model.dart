@@ -79,6 +79,17 @@ const double kDefaultShakeHiHz = 15.0;
 /// different global default.
 const double kDefaultShakeIndexThreshold = 0.849;
 
+/// Highest rhythm, in Hz, at which an unsteady window counts as tremor-like.
+///
+/// Tremor that affects eating — Parkinsonian, essential — sits at roughly
+/// 4-8 Hz. The faint jitter every hand has is faster, about 8-12 Hz. The
+/// recordings agree: the two sessions eaten with a tremor shook at 5.5 and
+/// 6.6 Hz, while the occasional window flagged in eighteen ordinary sessions
+/// was mostly at 8-10 Hz. Restricting to this band is what turns "some
+/// windows were unsteady" (0-12% of an ordinary meal) into a tremor reading
+/// that ordinary meals barely register on (0-3%).
+const double kDefaultTremorMaxHz = 8.0;
+
 class SteadinessReference {
   const SteadinessReference({
     required this.fftSize,
@@ -90,6 +101,7 @@ class SteadinessReference {
     this.shakeLoHz = kDefaultShakeLoHz,
     this.shakeHiHz = kDefaultShakeHiHz,
     this.shakeIndexThreshold = kDefaultShakeIndexThreshold,
+    this.tremorMaxHz = kDefaultTremorMaxHz,
     required this.normalSteadyPctMin,
     required this.normalSteadyPctMedian,
     required this.syntheticDetection,
@@ -114,6 +126,8 @@ class SteadinessReference {
       shakeHiHz: (j['shakeHiHz'] as num?)?.toDouble() ?? kDefaultShakeHiHz,
       shakeIndexThreshold: (j['shakeIndexThreshold'] as num?)?.toDouble() ??
           kDefaultShakeIndexThreshold,
+      tremorMaxHz:
+          (j['tremorMaxHz'] as num?)?.toDouble() ?? kDefaultTremorMaxHz,
       normalSteadyPctMin: (j['normalSteadyPctMin'] as num).toDouble(),
       normalSteadyPctMedian: (j['normalSteadyPctMedian'] as num).toDouble(),
       syntheticDetection: {
@@ -137,6 +151,9 @@ class SteadinessReference {
   final double shakeLoHz;
   final double shakeHiHz;
   final double shakeIndexThreshold;
+
+  /// See [kDefaultTremorMaxHz].
+  final double tremorMaxHz;
 
   /// Least broadband gyro RMS (deg/s) for a window to count as evidence about
   /// a hand. Below this the spoon is not being held, so the window is neither

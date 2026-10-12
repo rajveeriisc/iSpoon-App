@@ -7,7 +7,7 @@
 // discarded.
 
 import 'package:smartspoon/features/ai_lab/domain/insights/eating_insights.dart'
-    show steadyPctOf;
+    show steadyPctOf, tremorPctOf;
 
 enum MealPhase { idle, eating, paused, finished }
 
@@ -38,6 +38,8 @@ class MealRecord {
     required this.windows,
     required this.rhythmicWindows,
     this.activeWindows = 0,
+    this.tremorWindows = 0,
+    this.tremorHz,
     required this.rhythmHz,
     required this.reason,
   });
@@ -56,9 +58,16 @@ class MealRecord {
   /// over 600 are not the same claim.
   final int activeWindows;
 
+  /// Of the unsteady windows, how many had a tremor-band rhythm, and the
+  /// mean frequency of those. See tremorPctOf.
+  final int tremorWindows;
+  final double? tremorHz;
+
   /// Mean frequency of the rhythmic windows, or null when there were none.
   final double? rhythmHz;
   final MealEndReason reason;
+
+  double? get tremorPct => tremorPctOf(activeWindows, tremorWindows);
 
   double? get steadyPct => steadyPctOf(activeWindows, rhythmicWindows);
 
@@ -87,6 +96,8 @@ class MealTracker {
   int _activeWindows = 0;
   int _rhythmic = 0;
   double _rhythmHzSum = 0;
+  int _tremor = 0;
+  double _tremorHzSum = 0;
   MealRecord? _lastMeal;
 
   MealPhase get phase => _phase;
@@ -101,6 +112,8 @@ class MealTracker {
   int get activeWindows => _activeWindows;
   int get rhythmicWindows => _rhythmic;
   double? get rhythmHz => _rhythmic == 0 ? null : _rhythmHzSum / _rhythmic;
+  int get tremorWindows => _tremor;
+  double? get tremorHz => _tremor == 0 ? null : _tremorHzSum / _tremor;
 
   /// The most recent saved meal (shown as the summary while [phase] is
   /// finished).
@@ -123,6 +136,8 @@ class MealTracker {
       _activeWindows = 0;
       _rhythmic = 0;
       _rhythmHzSum = 0;
+      _tremor = 0;
+      _tremorHzSum = 0;
       _pending = null;
       _phase = MealPhase.eating;
       return;
@@ -140,6 +155,7 @@ class MealTracker {
     required bool rhythmic,
     required bool active,
     required double hz,
+    bool tremorLike = false,
   }) {
     if (!inMeal) return;
     _windows++;
@@ -148,6 +164,10 @@ class MealTracker {
     if (rhythmic) {
       _rhythmic++;
       _rhythmHzSum += hz;
+    }
+    if (tremorLike) {
+      _tremor++;
+      _tremorHzSum += hz;
     }
   }
 
@@ -178,6 +198,8 @@ class MealTracker {
         windows: _windows,
         activeWindows: _activeWindows,
         rhythmicWindows: _rhythmic,
+        tremorWindows: _tremor,
+        tremorHz: tremorHz,
         rhythmHz: rhythmHz,
         reason: reason,
       );
@@ -187,6 +209,8 @@ class MealTracker {
     _start = null;
     _windows = 0;
     _rhythmic = 0;
+    _tremor = 0;
+    _tremorHzSum = 0;
     _rhythmHzSum = 0;
     _phase = _lastMeal != null ? MealPhase.finished : MealPhase.idle;
     return saved;

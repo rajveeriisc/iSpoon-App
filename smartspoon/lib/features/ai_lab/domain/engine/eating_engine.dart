@@ -152,6 +152,8 @@ class EatingEngine {
       final unsteady = window.rhythmic || window.shaky;
       tracker.onWindow(
         rhythmic: unsteady,
+        // Unsteady AND slow enough to be tremor rather than ordinary jitter.
+        tremorLike: unsteady && window.hz <= model.steadiness.tremorMaxHz,
         active: window.active,
         hz: window.hz,
       );

@@ -369,6 +369,8 @@ class AiLabService extends ChangeNotifier implements AiLabActions {
         windows: r.activeWindows,
         rhythmicWindows: r.rhythmicWindows,
         rhythmHz: r.rhythmHz,
+        tremorWindows: r.tremorWindows,
+        tremorHz: r.tremorHz,
       );
 
   void _saveMeal(MealRecord meal, String spoonKey) {
@@ -460,6 +462,8 @@ class AiLabService extends ChangeNotifier implements AiLabActions {
         windows: t.activeWindows,
         rhythmicWindows: t.rhythmicWindows,
         rhythmHz: t.rhythmHz,
+        tremorWindows: t.tremorWindows,
+        tremorHz: t.tremorHz,
       );
       tips = _withPersonalTip(
           coachTips(metrics, baseline: profile?.baseline, live: true),

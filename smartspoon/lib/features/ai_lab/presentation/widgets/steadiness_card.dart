@@ -85,6 +85,10 @@ class SteadinessCard extends StatelessWidget {
                   'but not to a steady beat.',
           style: muted,
         ),
+        if (m.tremorPct != null) ...[
+          const SizedBox(height: 10),
+          _TremorLine(pct: m.tremorPct!, hz: m.tremorHz),
+        ],
         const SizedBox(height: 6),
         Text('This follows steadiness over time. It isn\'t a medical assessment.',
             style: theme.textTheme.bodySmall?.copyWith(
@@ -146,5 +150,61 @@ class _RangeBar extends StatelessWidget {
         ]),
       );
     });
+  }
+}
+
+/// The tremor reading: how much of the meal, at what rhythm, and where that
+/// sits against recordings whose answer is known.
+///
+/// Steady % says "some windows were unsteady". This says the narrower thing a
+/// person with a tremor is actually asking: how much of the meal shook at a
+/// tremor rhythm. The comparison figures are the labelled recordings the cuts
+/// were set from, shown so the number can be read against something.
+class _TremorLine extends StatelessWidget {
+  const _TremorLine({required this.pct, required this.hz});
+
+  final double pct;
+  final double? hz;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final level = tremorLevelOf(pct);
+    final (label, color) = switch (level) {
+      TremorLevel.none => ('No tremor-like shaking', kSteadyGreen),
+      TremorLevel.some => ('Some tremor-like shaking', kShakeAmber),
+      TremorLevel.marked => ('Marked tremor-like shaking', kShakeRed),
+    };
+    final rounded = pct.round();
+    final detail = StringBuffer(rounded == 0
+        ? 'None of this meal'
+        : '$rounded% of this meal');
+    final f = hz;
+    if (f != null && rounded > 0) {
+      detail.write(', around ${f.toStringAsFixed(1)} Hz');
+    }
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label,
+            style: theme.textTheme.bodyMedium
+                ?.copyWith(fontWeight: FontWeight.w700, color: color)),
+        const SizedBox(height: 2),
+        Text('$detail.', style: theme.textTheme.bodySmall),
+        const SizedBox(height: 4),
+        Text(
+          'For comparison: ordinary meals measured 0–5%, meals eaten with a '
+          'pronounced tremor 21–45%.',
+          style: theme.textTheme.bodySmall
+              ?.copyWith(color: mutedText(context), height: 1.35),
+        ),
+      ]),
+    );
   }
 }
