@@ -21,6 +21,8 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:smartspoon/features/devices/domain/heater_command.dart';
+import 'package:smartspoon/ble/models/command_models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:smartspoon/ble/ble_platform_bridge.dart';
@@ -309,13 +311,20 @@ class FakeTransport implements BleTransport {
     throw StateError('unexpected read $charUuid');
   }
 
+  /// Command writes, in order. Forget of a live spoon must send REL.
+  final List<List<int>> commandWrites = <List<int>>[];
+
   @override
   Future<void> writeCharacteristic(
     String remoteId,
     String charUuid,
     List<int> value, {
     bool withResponse = true,
-  }) async {}
+  }) async {
+    if (charUuid == BleConstants.commandCharacteristicUuid) {
+      commandWrites.add(List<int>.from(value));
+    }
+  }
 
   @override
   Stream<List<int>> subscribe(String remoteId, String charUuid) {
@@ -674,12 +683,51 @@ void main() {
     await h.coordinator.forgetSpoon(pidA);
     expect(h.registry.byId(pidA), isNull);
     expect(h.coordinator.activeSpoon, isNull);
+    expect(h.transport.commandWrites, contains(equals([0x52, 0x45, 0x4C])),
+        reason: 'a connected owner releases the spoon before the link drops');
+    expect(h.transport.clearBondCalls, isEmpty,
+        reason: 'the fake spoon keeps its bond, so the phone bond stays');
 
     // The spoon is still advertising; nothing may pick it back up.
     final after = h.transport.connectCalls.length;
     await quiet(const Duration(seconds: 10));
     expect(h.transport.connectCalls.length, after,
         reason: 'a forgotten spoon must not be re-selected by the fallback');
+    h.coordinator.dispose();
+  }, timeout: const Timeout(Duration(seconds: 60)));
+
+  test('forget releases the phone bond only after the spoon closes the link',
+      () async {
+    final h = await Harness.create([
+      recordFor(pidA, remoteId: 'ble-a', isPrimary: true),
+      recordFor(pidB, remoteId: 'ble-b'),
+    ]);
+    h.transport.identity['ble-a'] = identityBytesFor(pidA);
+    h.transport.identity['ble-b'] = identityBytesFor(pidB);
+    h.transport.adverts = [
+      FakeAdvert(remoteId: 'ble-a', deviceId: pidA),
+      FakeAdvert(remoteId: 'ble-b', deviceId: pidB),
+    ];
+
+    unawaited(h.coordinator.initialize());
+    await pumpUntil(() => h.coordinator.state == SpoonState.streaming);
+    expect(h.coordinator.activeSpoon?.spoonSerial, pidA);
+
+    // The spoon that is not on the radio must not be told to release, and
+    // its phone bond must stay. Clearing it while the spoon still has the
+    // owner is what forces the 6-second hold.
+    await h.coordinator.forgetSpoon(pidB);
+    expect(h.transport.commandWrites, isEmpty);
+    expect(h.transport.clearBondCalls, isEmpty);
+    expect(h.registry.byId(pidB), isNull);
+    expect(h.coordinator.activeSpoon?.spoonSerial, pidA);
+
+    // New firmware terminates the link only after the owner bond is gone.
+    h.transport.deliberateDrops.add('ble-a');
+    await h.coordinator.forgetSpoon(pidA);
+    expect(h.transport.commandWrites, [const [0x52, 0x45, 0x4C]]);
+    expect(h.transport.clearBondCalls, ['ble-a']);
+    expect(h.registry.byId(pidA), isNull);
     h.coordinator.dispose();
   }, timeout: const Timeout(Duration(seconds: 60)));
 
@@ -1404,4 +1452,45 @@ void main() {
     expect(h.registry.byId(pidB)?.bleRemoteId, 'ble-b-new');
     h.coordinator.dispose();
   }, timeout: const Timeout(Duration(seconds: 60)));
+
+  // The heater SKU's RX handler (bc_rx_write) accepts exactly three byte
+  // strings — "OFF", "ON", and "ON NN" with NN 30-70 — and silently ACKs and
+  // ignores anything else, including the same text with a trailing newline or
+  // NUL. A malformed heater command therefore produces no error anywhere: the
+  // write succeeds and the spoon does nothing. This pins the bytes the app
+  // actually puts on the RX characteristic once STREAMING.
+  test('heater ON reaches RX as the exact bytes firmware accepts', () async {
+    final h = await Harness.create([recordFor(pidA, isPrimary: true)]);
+    h.transport.identity['ble-a'] = identityBytesFor(pidA);
+    h.transport.adverts = [
+      FakeAdvert(remoteId: 'ble-a', deviceId: pidA, rssi: -50),
+    ];
+    unawaited(h.coordinator.initialize());
+    await pumpUntil(() => h.coordinator.state == SpoonState.streaming);
+
+    final q = h.coordinator.commands;
+    Future<CommandResult> send(int target) => q.enqueue(SpoonCommand(
+          commandId: q.nextCommandId(),
+          spoonSerial: q.boundSerial!,
+          connectionGeneration: q.boundGeneration,
+          sessionNonce: q.boundNonce!,
+          payload: heaterCommandBytes(target),
+          type: target > 0 ? 'heater.on' : 'heater.off',
+          ttlClass: CommandTtlClass.immediate,
+          safetyCritical: true,
+        ));
+
+    final before = h.transport.commandWrites.length;
+    final on = await send(44);
+    final off = await send(0);
+    final sent = h.transport.commandWrites.skip(before).toList();
+
+    expect(on.isSuccess, isTrue);
+    expect(off.isSuccess, isTrue);
+    expect(sent, [
+      'ON 44'.codeUnits, // 5 bytes, no terminator
+      'OFF'.codeUnits,
+    ]);
+    h.coordinator.dispose();
+  }, timeout: const Timeout(Duration(seconds: 40)));
 }
